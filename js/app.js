@@ -535,7 +535,7 @@ function renderAccounts(app) {
     return `<tr data-id="${a.id}" style="${w.length?'background:#fef2f2':''}">
       <td><strong>${a.name}</strong></td>
       <td><input type="number" min="0" value="${a.osas}" data-field="osas"></td>
-      <td><input type="text" value="${a.responsible}" data-field="responsible"></td>
+      <td><input type="text" value="${a.responsible}" data-field="responsible" style="min-width:130px"></td>
       <td><input type="number" min="0" value="${a.total}" data-field="total"></td>
       <td><input type="number" min="0" value="${a.reviewed}" data-field="reviewed"></td>
       <td><input type="number" min="0" value="${a.baseCount}" data-field="baseCount"></td>
@@ -548,8 +548,8 @@ function renderAccounts(app) {
       <td style="color:${gap<0?'var(--danger)':'var(--success)'};white-space:nowrap">${(gap*100).toFixed(1)} pts</td>
       <td>${calcPhase(a)}</td>
       <td><input type="checkbox" ${a.criticalBlock?'checked':''} data-field="criticalBlock"></td>
-      <td><input type="text" value="${a.nextAction||''}" data-field="nextAction"></td>
-      <td><input type="text" value="${a.actionResponsible||''}" data-field="actionResponsible"></td>
+      <td><input type="text" value="${a.nextAction||''}" data-field="nextAction" style="min-width:120px"></td>
+      <td><input type="text" value="${a.actionResponsible||''}" data-field="actionResponsible" style="min-width:110px"></td>
       <td><input type="date" value="${a.commitmentDate||''}" data-field="commitmentDate"></td>
       <td><span class="badge ${statusClass(st)}">${st}</span></td>
     </tr>`;
@@ -789,18 +789,18 @@ function renderRisks(app) {
     const sem = calcRiskSemaphore(r), days = calcRiskDays(r);
     const cls = { 'CERRADO':'badge-finalizado','VENCIDO':'badge-rojo','URGENTE':'badge-ambar','EN PLAZO':'badge-verde','SIN FECHA':'badge-sin-fecha' }[sem];
     return `<tr data-i="${i}">
-      <td>${r.id}</td>
+      <td style="white-space:nowrap"><strong>${r.id}</strong></td>
       <td><input type="date" value="${r.meetingDate||''}" data-field="meetingDate"></td>
-      <td><input type="text" value="${r.account||''}" data-field="account"></td>
-      <td><select data-field="category">${['Dato faltante','Acceso','Capacidad','Calidad','Plazo','Decisión','Otro'].map(c=>`<option ${r.category===c?'selected':''}>${c}</option>`).join('')}</select></td>
-      <td><input type="text" value="${r.detail||''}" data-field="detail"></td>
-      <td><select data-field="impact">${['Bajo','Medio','Alto'].map(c=>`<option ${r.impact===c?'selected':''}>${c}</option>`).join('')}</select></td>
-      <td><input type="text" value="${r.responsible||''}" data-field="responsible"></td>
+      <td><input type="text" value="${r.account||''}" data-field="account" style="min-width:120px"></td>
+      <td><select data-field="category" style="min-width:110px">${['Dato faltante','Acceso','Capacidad','Calidad','Plazo','Decisión','Otro'].map(c=>`<option ${r.category===c?'selected':''}>${c}</option>`).join('')}</select></td>
+      <td><input type="text" value="${r.detail||''}" data-field="detail" style="min-width:200px"></td>
+      <td><select data-field="impact" style="min-width:80px">${['Bajo','Medio','Alto'].map(c=>`<option ${r.impact===c?'selected':''}>${c}</option>`).join('')}</select></td>
+      <td><input type="text" value="${r.responsible||''}" data-field="responsible" style="min-width:130px"></td>
       <td><input type="date" value="${r.commitmentDate||''}" data-field="commitmentDate"></td>
-      <td><select data-field="status">${['Abierto','En gestión','Cerrado'].map(c=>`<option ${r.status===c?'selected':''}>${c}</option>`).join('')}</select></td>
+      <td><select data-field="status" style="min-width:100px">${['Abierto','En gestión','Cerrado'].map(c=>`<option ${r.status===c?'selected':''}>${c}</option>`).join('')}</select></td>
       <td>${days==null?'—':days}</td>
       <td><span class="badge ${cls}">${sem}</span></td>
-      <td><input type="text" value="${r.closure||''}" data-field="closure"></td>
+      <td><input type="text" value="${r.closure||''}" data-field="closure" style="min-width:160px"></td>
       <td><button class="btn-ghost" data-del="${i}">✕</button></td>
     </tr>`;
   }).join('');
@@ -829,11 +829,11 @@ function renderHistory(app) {
     <div class="table-wrap"><table>
       <thead><tr><th>Fecha</th><th>Cuenta</th><th>OSAs</th><th>Total</th><th>Revisados</th><th>Base ok</th><th>AG-AS ok</th><th>QA ok</th><th>% Base</th><th>% AG-AS</th><th>% QA</th><th>% Global</th><th>Estado</th><th>Comentario</th></tr></thead>
       <tbody>${sorted.map(h=>`<tr>
-        <td>${h.date}</td><td><strong>${h.account}</strong></td><td>${h.osas}</td><td>${h.total}</td><td>${h.reviewed||0}</td>
+        <td style="white-space:nowrap">${h.date}</td><td><strong>${h.account}</strong></td><td>${h.osas}</td><td>${h.total}</td><td>${h.reviewed||0}</td>
         <td>${h.baseCount||0}</td><td>${h.agasCount||0}</td><td>${h.qaCount||0}</td>
         <td>${fmtPct(h.pctBase)}</td><td>${fmtPct(h.pctAGAS)}</td><td>${fmtPct(h.pctQA)}</td><td>${fmtPct(h.global)}</td>
         <td><span class="badge ${statusClass(h.status)}">${h.status}</span></td>
-        <td style="max-width:260px">${h.comment||''}</td>
+        <td style="min-width:200px">${h.comment||''}</td>
       </tr>`).join('')}</tbody>
     </table></div>`}
   </div>`;
@@ -869,8 +869,8 @@ function renderSchedule(app) {
           <td><span class="badge badge-sin-fecha" style="background:var(--primary);color:#fff">${fmtPct(s.meta)}</span></td>
           <td style="font-size:12px;color:var(--gray-600)">${s.evidence}</td>
           <td style="font-size:12px;color:var(--danger)">${s.risk}</td>
-          <td><span style="font-size:12px;font-weight:600">${s.meeting}</span></td>
-          <td style="font-size:12px">${s.responsible}</td>
+          <td><span style="font-size:12px;font-weight:600;white-space:nowrap">${s.meeting}</span></td>
+          <td style="font-size:12px;white-space:nowrap">${s.responsible}</td>
           <td><span class="badge ${s.status==='Completado'?'badge-verde':s.status==='En curso'?'badge-ambar':'badge-sin-fecha'}">${s.status}</span></td>
         </tr>`).join('')}
       </tbody>
