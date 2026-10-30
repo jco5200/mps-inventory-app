@@ -534,23 +534,23 @@ function renderAccounts(app) {
     const w = warnings.filter(x=>x.accountId===a.id);
     return `<tr data-id="${a.id}" style="${w.length?'background:#fef2f2':''}">
       <td><strong>${a.name}</strong></td>
-      <td><input type="number" min="0" value="${a.osas}" data-field="osas" style="width:50px"></td>
-      <td><input type="text" value="${a.responsible}" data-field="responsible" style="min-width:130px"></td>
-      <td><input type="number" min="0" value="${a.total}" data-field="total" style="width:70px"></td>
-      <td><input type="number" min="0" value="${a.reviewed}" data-field="reviewed" style="width:70px"></td>
-      <td><input type="number" min="0" value="${a.baseCount}" data-field="baseCount" style="width:70px"></td>
-      <td><input type="number" min="0" value="${a.agasCount}" data-field="agasCount" style="width:70px"></td>
-      <td><input type="number" min="0" value="${a.qaCount}" data-field="qaCount" style="width:70px"></td>
+      <td><input type="number" min="0" value="${a.osas}" data-field="osas"></td>
+      <td><input type="text" value="${a.responsible}" data-field="responsible"></td>
+      <td><input type="number" min="0" value="${a.total}" data-field="total"></td>
+      <td><input type="number" min="0" value="${a.reviewed}" data-field="reviewed"></td>
+      <td><input type="number" min="0" value="${a.baseCount}" data-field="baseCount"></td>
+      <td><input type="number" min="0" value="${a.agasCount}" data-field="agasCount"></td>
+      <td><input type="number" min="0" value="${a.qaCount}" data-field="qaCount"></td>
       <td>${fmtPct(pctBase(a))}</td><td>${fmtPct(pctAGAS(a))}</td><td>${fmtPct(pctQA(a))}</td>
       <td><strong>${fmtPct(g)}</strong></td><td>${deltaStr}</td>
-      <td><input type="date" value="${a.updateDate}" data-field="updateDate" style="width:120px"></td>
+      <td><input type="date" value="${a.updateDate}" data-field="updateDate"></td>
       <td>${fmtPct(m)}</td>
       <td style="color:${gap<0?'var(--danger)':'var(--success)'};white-space:nowrap">${(gap*100).toFixed(1)} pts</td>
       <td>${calcPhase(a)}</td>
       <td><input type="checkbox" ${a.criticalBlock?'checked':''} data-field="criticalBlock"></td>
-      <td><input type="text" value="${a.nextAction||''}" data-field="nextAction" style="min-width:120px"></td>
-      <td><input type="text" value="${a.actionResponsible||''}" data-field="actionResponsible" style="min-width:110px"></td>
-      <td><input type="date" value="${a.commitmentDate||''}" data-field="commitmentDate" style="width:120px"></td>
+      <td><input type="text" value="${a.nextAction||''}" data-field="nextAction"></td>
+      <td><input type="text" value="${a.actionResponsible||''}" data-field="actionResponsible"></td>
+      <td><input type="date" value="${a.commitmentDate||''}" data-field="commitmentDate"></td>
       <td><span class="badge ${statusClass(st)}">${st}</span></td>
     </tr>`;
   }).join('');
@@ -791,16 +791,16 @@ function renderRisks(app) {
     return `<tr data-i="${i}">
       <td>${r.id}</td>
       <td><input type="date" value="${r.meetingDate||''}" data-field="meetingDate"></td>
-      <td><input type="text" value="${r.account||''}" data-field="account" style="min-width:100px"></td>
+      <td><input type="text" value="${r.account||''}" data-field="account"></td>
       <td><select data-field="category">${['Dato faltante','Acceso','Capacidad','Calidad','Plazo','Decisión','Otro'].map(c=>`<option ${r.category===c?'selected':''}>${c}</option>`).join('')}</select></td>
-      <td><input type="text" value="${r.detail||''}" data-field="detail" style="min-width:200px"></td>
+      <td><input type="text" value="${r.detail||''}" data-field="detail"></td>
       <td><select data-field="impact">${['Bajo','Medio','Alto'].map(c=>`<option ${r.impact===c?'selected':''}>${c}</option>`).join('')}</select></td>
-      <td><input type="text" value="${r.responsible||''}" data-field="responsible" style="min-width:120px"></td>
+      <td><input type="text" value="${r.responsible||''}" data-field="responsible"></td>
       <td><input type="date" value="${r.commitmentDate||''}" data-field="commitmentDate"></td>
       <td><select data-field="status">${['Abierto','En gestión','Cerrado'].map(c=>`<option ${r.status===c?'selected':''}>${c}</option>`).join('')}</select></td>
       <td>${days==null?'—':days}</td>
       <td><span class="badge ${cls}">${sem}</span></td>
-      <td><input type="text" value="${r.closure||''}" data-field="closure" style="min-width:160px"></td>
+      <td><input type="text" value="${r.closure||''}" data-field="closure"></td>
       <td><button class="btn-ghost" data-del="${i}">✕</button></td>
     </tr>`;
   }).join('');
@@ -848,12 +848,12 @@ function renderSchedule(app) {
     <div class="table-wrap" style="margin-top:16px"><table>
       <thead><tr>
         <th>Semana</th><th>Periodo</th><th>Fase principal</th>
-        <th style="min-width:220px">Actividades del OSA</th>
-        <th style="min-width:200px">Actividad del supervisor</th>
-        <th style="min-width:180px">Entregable esperado</th>
+        <th style="min-width:180px">Actividades del OSA</th>
+        <th style="min-width:180px">Actividad del supervisor</th>
+        <th style="min-width:150px">Entregable esperado</th>
         <th>Meta acum.</th>
-        <th style="min-width:180px">Evidencia requerida</th>
-        <th style="min-width:180px">Riesgo a controlar</th>
+        <th style="min-width:150px">Evidencia requerida</th>
+        <th style="min-width:150px">Riesgo a controlar</th>
         <th>Reunión / control</th>
         <th>Responsable</th>
         <th>Estado</th>
