@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Control Proyecto Inventarios MPS 2026</title>
+<link rel="stylesheet" href="css/styles.css">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
+</head>
+<body>
+<header class="app-header">
+  <div class="brand">
+    <div class="logo">MPS</div>
+    <div>
+      <h1>Control Proyecto Inventarios</h1>
+      <p class="subtitle">Cierre comprometido: 30-11-2026 · 12 cuentas</p>
+    </div>
+  </div>
+  <div class="header-actions">
+    <input type="date" id="controlDate" title="Fecha de control">
+    <button id="btnExportExcel" class="btn">📊 Exportar Excel</button>
+    <button id="btnSnapshot" class="btn btn-primary">Guardar corte semanal</button>
+  </div>
+</header>
+
+<nav class="app-nav">
+  <button data-view="dashboard" class="active">Dashboard</button>
+  <button data-view="plan">Plan Semanal</button>
+  <button data-view="accounts">Cuentas</button>
+  <button data-view="gantt">Gantt</button>
+  <button data-view="risks">Acuerdos y Riesgos</button>
+  <button data-view="history">Historial</button>
+  <button data-view="schedule">Cronograma</button>
+  <button data-view="backups">🛡 Respaldos</button>
+  <button data-view="settings">⚙ Configuración</button>
+</nav>
+
+<main id="app"></main>
+
+<!-- Modal de reunión -->
+<div id="reunionModal" class="modal-overlay" style="display:none">
+  <div class="modal modal-wide">
+    <div id="reunionBody"></div>
+  </div>
+</div>
+
+<div id="toast" class="toast"></div>
+<script src="js/app.js"></script>
+</body>
+</html>
