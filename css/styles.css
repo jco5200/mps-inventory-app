@@ -153,8 +153,8 @@ td select { min-width: 100px; }
 /* INSTRUCCIONES */
 .instruction-step { background: #f8fafc; border-left: 4px solid var(--primary); padding: 20px; border-radius: 8px; margin-bottom: 20px; }
 .instruction-step h4 { font-size: 16px; font-weight: 600; margin-bottom: 12px; color: var(--primary); }
-.instruction-step p, .instruction-step ul { font-size: 14px; color: var(--gray-700); margin-bottom: 10px; line-height: 1.6; }
-.instruction-step ul { padding-left: 24px; }
+.instruction-step p, .instruction-step ul, .instruction-step ol { font-size: 14px; color: var(--gray-700); margin-bottom: 10px; line-height: 1.6; }
+.instruction-step ul, .instruction-step ol { padding-left: 24px; }
 .instruction-step li { margin-bottom: 6px; }
 .highlight-box { background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; padding: 16px; margin-top: 16px; font-size: 13px; color: #1e40af; }
 
