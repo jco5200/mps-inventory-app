@@ -359,6 +359,11 @@ function getLastSnapshotByAccount() {
   });
   return m;
 }
+// Función auxiliar para verificar si es fin de semana
+function isWeekend(dateStr) {
+  const day = new Date(dateStr + 'T00:00:00').getDay();
+  return day === 0 || day === 6; // 0 = Domingo, 6 = Sábado
+}
 
 /* ========== RENDER ========== */
 function render() {
@@ -844,7 +849,14 @@ function renderGantt(app) {
             <th class="col-left">Fase</th>
             <th>Inicio</th>
             <th>Fin</th>
-            ${dates.map(d => `<th class="gantt-day-header ${d === today ? 'gantt-today-col' : ''}"><span>${d.slice(5)}</span></th>`).join('')}
+            ${dates.map(d => {
+              const isTdy = d === today;
+              const isWknd = isWeekend(d);
+              let cls = 'gantt-day-header';
+              if (isTdy) cls += ' gantt-today-col';
+              else if (isWknd) cls += ' weekend-col';
+              return `<th class="${cls}"><span>${d.slice(5)}</span></th>`;
+            }).join('')}
           </tr>
         </thead>
         <tbody>`;
@@ -860,9 +872,15 @@ function renderGantt(app) {
         <td style="${isFirst ? 'border-top:2px solid var(--gray-300)' : ''}">${ph.end.slice(5)}</td>
         ${dates.map(d => {
           const isActive = d >= ph.start && d <= ph.end;
-          const isTodayCol = d === today ? 'gantt-today-col' : '';
+          const isTdy = d === today;
+          const isWknd = isWeekend(d);
+          
+          let cls = '';
+          if (isTdy) cls = 'gantt-today-col';
+          else if (isWknd) cls = 'weekend-col';
+          
           const borderTop = isFirst ? 'border-top:2px solid var(--gray-300);' : '';
-          return `<td class="${isTodayCol}" style="padding:0; ${borderTop}">
+          return `<td class="${cls}" style="padding:0; ${borderTop}">
             ${isActive ? `<div class="gantt-active-cell" style="background:${ph.color}; width:100%; height:24px;"></div>` : ''}
           </td>`;
         }).join('')}
@@ -1420,186 +1438,4 @@ async function exportToExcel() {
   // Formatear celdas de Resumen
   accs.forEach((a, i) => {
     const r = 70 + i;
-    ws.getCell(r, 2).numFmt = '0.0%'; // Avance
-    ws.getCell(r, 3).numFmt = '0.0%'; // Meta
-    ws.getCell(r, 4).numFmt = '+0.0%;-0.0%;0.0%'; // Brecha
-    const gapCell = ws.getCell(r, 4);
-    gapCell.font = { bold:true, color:{argb: calcGap(a) < 0 ? 'FFDC2626' : 'FF16A34A'} };
-    
-    const st = calcStatus(a);
-    const stCell = ws.getCell(r, 6);
-    const cmap = { 'AL DÍA':'FFD1FAE5','ATRASO MENOR':'FFFEF3C7','ATRASO CRÍTICO':'FFFEE2E2','CRÍTICO':'FFFEE2E2',FINALIZADO:'FFCCFBF1','SIN DATOS':'FFF3F4F6' };
-    stCell.fill = { type:'pattern', pattern:'solid', fgColor:{argb:cmap[st]||'FFFFFFFF'} };
-    stCell.font = { bold:true, size:9, color:{argb: st==='ATRASO CRÍTICO'||st==='CRÍTICO'?'FF991B1B': (st==='AL DÍA'||st==='FINALIZADO'?'FF065F46':'FF92400E')} };
-  });
-
-  /* HOJA 2: ACTUALIZAR AVANCE */
-  const wsA = wb.addWorksheet('Actualizar Avance', { properties:{ tabColor:{argb:'FF16A34A'} } });
-  wsA.columns = [
-    {header:'Cuenta',key:'name',width:20},{header:'OSAs',key:'osas',width:8},{header:'Responsable',key:'responsible',width:22},
-    {header:'Total',key:'total',width:10},{header:'Revisados',key:'reviewed',width:12},{header:'Base ok',key:'baseCount',width:10},
-    {header:'AG-AS ok',key:'agasCount',width:10},{header:'QA ok',key:'qaCount',width:10},
-    {header:'% Base',key:'pctBase',width:10},{header:'% AG-AS',key:'pctAGAS',width:10},{header:'% QA',key:'pctQA',width:10},
-    {header:'Global',key:'global',width:10},{header:'Fecha',key:'updateDate',width:14},{header:'Meta',key:'meta',width:10},
-    {header:'Brecha',key:'gap',width:12},{header:'Fase',key:'phase',width:22},{header:'Bloqueo',key:'block',width:10},{header:'Estado',key:'status',width:14},
-  ];
-  accs.forEach(a=>wsA.addRow({
-    name:a.name, osas:a.osas, responsible:a.responsible, total:a.total, reviewed:a.reviewed,
-    baseCount:a.baseCount, agasCount:a.agasCount, qaCount:a.qaCount,
-    pctBase:pctBase(a), pctAGAS:pctAGAS(a), pctQA:pctQA(a), global:calcGlobal(a), updateDate:a.updateDate,
-    meta:calcMeta(state.controlDate), gap:calcGap(a), phase:calcPhase(a), block:a.criticalBlock?'Sí':'No', status:calcStatus(a),
-  }));
-  
-  const hA = wsA.getRow(1);
-  hA.font = { bold:true, color:{argb:'FFFFFFFF'} };
-  hA.fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FF1E40AF'} };
-  hA.height = 30;
-  [9,10,11,12,14].forEach(c=>wsA.getColumn(c).numFmt = '0.0%');
-  wsA.getColumn(15).numFmt = '+0.0%;-0.0%;0.0%';
-  
-  wsA.eachRow((row,r)=>{
-    if (r===1) return;
-    const s = row.getCell(18);
-    const cmap = { 'AL DÍA':'FFD1FAE5','ATRASO MENOR':'FFFEF3C7','ATRASO CRÍTICO':'FFFEE2E2','CRÍTICO':'FFFEE2E2',FINALIZADO:'FFCCFBF1','SIN DATOS':'FFF3F4F6' };
-    if (cmap[s.value]) { s.fill = { type:'pattern', pattern:'solid', fgColor:{argb:cmap[s.value]} }; s.font = { bold:true }; }
-    s.alignment = { horizontal:'center' };
-    row.height = 22;
-    
-    // Estilo cebra y bordes
-    row.eachCell(cell => {
-      if (r % 2 === 0) cell.fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FFF9FAFB'} };
-      cell.border = { top:{style:'thin', color:{argb:'FFE5E7EB'}}, left:{style:'thin', color:{argb:'FFE5E7EB'}}, bottom:{style:'thin', color:{argb:'FFE5E7EB'}}, right:{style:'thin', color:{argb:'FFE5E7EB'}} };
-    });
-  });
-  wsA.views = [{ state:'frozen', ySplit:1 }];
-  wsA.autoFilter = { from:'A1', to:'R1' };
-
-  /* HOJA 3: ACUERDOS Y RIESGOS */
-  if (state.risks.length) {
-    const wsR = wb.addWorksheet('Acuerdos y Riesgos', { properties:{ tabColor:{argb:'FFDC2626'} } });
-    wsR.columns = [
-      {header:'ID',key:'id',width:8},{header:'Fecha',key:'meetingDate',width:14},{header:'Cuenta',key:'account',width:18},
-      {header:'Categoría',key:'category',width:14},{header:'Detalle',key:'detail',width:40},{header:'Impacto',key:'impact',width:10},
-      {header:'Responsable',key:'responsible',width:20},{header:'Compromiso',key:'commitmentDate',width:14},
-      {header:'Estado',key:'status',width:12},{header:'Días',key:'days',width:10},{header:'Semáforo',key:'sem',width:12},{header:'Cierre',key:'closure',width:30},
-    ];
-    state.risks.forEach(r=>wsR.addRow({
-      id:r.id, meetingDate:r.meetingDate, account:r.account, category:r.category, detail:r.detail,
-      impact:r.impact, responsible:r.responsible, commitmentDate:r.commitmentDate, status:r.status,
-      days:calcRiskDays(r), sem:calcRiskSemaphore(r), closure:r.closure,
-    }));
-    const hR = wsR.getRow(1);
-    hR.font = { bold:true, color:{argb:'FFFFFFFF'} };
-    hR.fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FF1E40AF'} };
-    hR.height = 30;
-    
-    wsR.eachRow((row,r)=>{
-      if (r===1) return;
-      row.height = 22;
-      row.eachCell(cell => {
-        if (r % 2 === 0) cell.fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FFF9FAFB'} };
-        cell.border = { top:{style:'thin', color:{argb:'FFE5E7EB'}}, left:{style:'thin', color:{argb:'FFE5E7EB'}}, bottom:{style:'thin', color:{argb:'FFE5E7EB'}}, right:{style:'thin', color:{argb:'FFE5E7EB'}} };
-      });
-    });
-    wsR.views = [{ state:'frozen', ySplit:1 }];
-  }
-
-  /* HOJA 4: HISTORIAL */
-  if (state.history.length) {
-    const wsH = wb.addWorksheet('Historial', { properties:{ tabColor:{argb:'FFF59E0B'} } });
-    wsH.columns = [
-      {header:'Fecha',key:'date',width:14},{header:'Cuenta',key:'account',width:20},{header:'OSAs',key:'osas',width:8},
-      {header:'Total',key:'total',width:10},{header:'Revisados',key:'reviewed',width:12},{header:'Base ok',key:'baseCount',width:10},
-      {header:'AG-AS ok',key:'agasCount',width:10},{header:'QA ok',key:'qaCount',width:10},
-      {header:'% Base',key:'pctBase',width:10},{header:'% AG-AS',key:'pctAGAS',width:10},{header:'% QA',key:'pctQA',width:10},
-      {header:'Global',key:'global',width:10},{header:'Estado',key:'status',width:14},{header:'Comentario',key:'comment',width:40},
-    ];
-    state.history.forEach(h=>wsH.addRow(h));
-    const hH = wsH.getRow(1);
-    hH.font = { bold:true, color:{argb:'FFFFFFFF'} };
-    hH.fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FF1E40AF'} };
-    hH.height = 30;
-    [9,10,11,12].forEach(c=>wsH.getColumn(c).numFmt = '0.0%');
-    
-    wsH.eachRow((row,r)=>{
-      if (r===1) return;
-      row.height = 22;
-      row.eachCell(cell => {
-        if (r % 2 === 0) cell.fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FFF9FAFB'} };
-        cell.border = { top:{style:'thin', color:{argb:'FFE5E7EB'}}, left:{style:'thin', color:{argb:'FFE5E7EB'}}, bottom:{style:'thin', color:{argb:'FFE5E7EB'}}, right:{style:'thin', color:{argb:'FFE5E7EB'}} };
-      });
-    });
-    wsH.views = [{ state:'frozen', ySplit:1 }];
-  }
-
-  const buf = await wb.xlsx.writeBuffer();
-  download(new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}), `MPS_Control_${new Date().toISOString().slice(0,10)}.xlsx`);
-  toast('✓ Excel profesional exportado');
-}
-
-/* ========== UTILS / ACTIONS ========== */
-function download(blob, filename) {
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob); a.download = filename;
-  a.click(); URL.revokeObjectURL(a.href);
-}
-let toastTimer;
-function toast(msg) {
-  const t = document.getElementById('toast');
-  t.textContent = msg; t.classList.add('show');
-  clearTimeout(toastTimer);
-  toastTimer = setTimeout(()=>t.classList.remove('show'), 2400);
-}
-function takeSnapshot() {
-  const date = state.controlDate;
-  state.accounts.forEach(a => {
-    state.history.push({
-      date, account: a.name, osas: a.osas, total: a.total, reviewed: a.reviewed,
-      baseCount: a.baseCount, agasCount: a.agasCount, qaCount: a.qaCount,
-      pctBase: pctBase(a), pctAGAS: pctAGAS(a), pctQA: pctQA(a),
-      global: calcGlobal(a), status: calcStatus(a), comment: a.observations||'',
-    });
-  });
-  saveState();
-  toast(`Corte ${date} guardado (12 cuentas)`);
-  if (currentView === 'history') render();
-}
-
-/* ========== INIT ========== */
-async function init() {
-  state = await loadState();
-  if (!state.controlDate) state.controlDate = new Date().toISOString().slice(0,10);
-  
-  document.getElementById('controlDate').value = state.controlDate;
-  document.getElementById('controlDate').addEventListener('change', e => {
-    state.controlDate = e.target.value; saveState();
-    render(); toast('Fecha de control: ' + e.target.value);
-  });
-  
-  document.getElementById('btnSnapshot').addEventListener('click', takeSnapshot);
-  document.getElementById('btnExportExcel').addEventListener('click', () => {
-    exportToExcel().catch(err => { console.error(err); toast('Error al exportar: ' + err.message); });
-  });
-  
-  // Establecer pestaña activa inicial
-  document.querySelectorAll('.app-nav button').forEach(x=>x.classList.remove('active'));
-  const initialBtn = document.querySelector('.app-nav button[data-view="instructions"]');
-  if (initialBtn) initialBtn.classList.add('active');
-
-  document.querySelectorAll('.app-nav button').forEach(b => {
-    b.addEventListener('click', () => {
-      document.querySelectorAll('.app-nav button').forEach(x=>x.classList.remove('active'));
-      b.classList.add('active');
-      currentView = b.dataset.view; render();
-      window.scrollTo({top:0,behavior:'smooth'});
-    });
-  });
-
-  await restoreFileHandle();
-  startAutoSave();
-  setupUnloadWarning();
-  updateBackupStatus();
-  render();
-}
-
-init();
+    ws.getCell(r, 2).numFmt = '0.0%
