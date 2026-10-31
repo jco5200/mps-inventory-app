@@ -88,7 +88,7 @@ const SCHEDULE = [
 ];
 
 let state = null;
-let currentView = 'dashboard';
+let currentView = 'instructions'; // Iniciamos en instrucciones
 let charts = {};
 
 /* ========== SISTEMA DE RESPALDO (5 CAPAS) ========== */
@@ -1184,4 +1184,273 @@ function renderSettings(app) {
   });
   document.getElementById('btnReset').addEventListener('click',()=>{
     if (!confirm('Se borrarán TODOS los datos. ¿Continuar?')) return;
-    state = getInitialState(); saveState(); render(); toast
+    state = getInitialState(); saveState(); render(); toast('Sistema reiniciado');
+  });
+}
+
+/* ========== EXPORTAR EXCEL ========== */
+function generateChartImage(config) {
+  const c = document.createElement('canvas');
+  c.width = 900; c.height = 450;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = '#fff'; ctx.fillRect(0,0,c.width,c.height);
+  const chart = new Chart(c, config);
+  const url = c.toDataURL('image/png', 1.0);
+  chart.destroy();
+  return url.split(',')[1];
+}
+
+async function exportToExcel() {
+  toast('Generando Excel con gráficos...');
+  const accs = state.accounts;
+  const totalOSAs = accs.reduce((s,a)=>s+(+a.osas||0),0);
+  const avgProgress = accs.reduce((s,a)=>s+calcGlobal(a),0)/accs.length;
+  const totalReviewed = accs.reduce((s,a)=>s+(+a.reviewed||0),0);
+  const totalEquip = accs.reduce((s,a)=>s+(+a.total||0),0);
+  
+  const counts = { FINALIZADO:0, 'AL DÍA':0, 'ATRASO MENOR':0, 'ATRASO CRÍTICO':0, 'CRÍTICO':0, 'SIN DATOS':0 };
+  accs.forEach(a=>counts[calcStatus(a)]++);
+
+  const wb = new ExcelJS.Workbook();
+  wb.creator = 'Control Proyecto Inventarios MPS 2026';
+  wb.created = new Date();
+
+  /* HOJA 1: DASHBOARD */
+  const ws = wb.addWorksheet('Dashboard', { views:[{showGridLines:false}], properties:{ tabColor:{argb:'FF2563EB'} } });
+  ws.columns = [
+    {width:12},{width:12},{width:12},{width:12},{width:12}, // A-E (Bar chart)
+    {width:12},{width:12},{width:12},{width:12},{width:12}, // F-J
+    {width:2},  // K (separador)
+    {width:12},{width:12},{width:12},{width:12},{width:12}  // L-P (Doughnut)
+  ];
+
+  ws.mergeCells('A1:J2');
+  const t = ws.getCell('A1');
+  t.value = 'DASHBOARD EJECUTIVO · CONTROL INVENTARIOS MPS 2026';
+  t.font = { bold:true, size:16, color:{argb:'FFFFFFFF'} };
+  t.fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FF2563EB'} };
+  t.alignment = { horizontal:'center', vertical:'middle' };
+  ws.getRow(1).height = 30;
+  ws.getRow(2).height = 30;
+
+  ws.mergeCells('A3:J3');
+  ws.getCell('A3').value = `Cierre: 30-11-2026 · Generado: ${new Date().toLocaleString('es-CL')} · Fecha control: ${state.controlDate}`;
+  ws.getCell('A3').font = { italic:true, size:10, color:{argb:'FF6B7280'} };
+  ws.getCell('A3').alignment = { horizontal:'center' };
+  ws.getRow(3).height = 20;
+
+  // KPIs
+  const kpis = [
+    {label:'Cuentas',value:12,color:'FF2563EB', col:1, row:5},
+    {label:'OSAs',value:totalOSAs,color:'FF2563EB', col:1, row:7},
+    {label:'Equipos revisados',value:`${totalReviewed}/${totalEquip}`,color:'FF2563EB', col:1, row:9},
+    {label:'Avance promedio',value:avgProgress,color:'FF16A34A',pct:true, col:1, row:11},
+    {label:'Al día',value:counts['AL DÍA']+counts.FINALIZADO,color:'FF16A34A', col:6, row:5},
+    {label:'Atraso menor',value:counts['ATRASO MENOR'],color:'FFF59E0B', col:6, row:7},
+    {label:'Atraso crítico',value:counts['ATRASO CRÍTICO']+counts['CRÍTICO'],color:'FFDC2626', col:6, row:9},
+    {label:'Finalizados',value:counts.FINALIZADO,color:'FF0D9488', col:6, row:11},
+  ];
+  kpis.forEach(k=>{
+    ws.mergeCells(k.row, k.col, k.row, k.col+2);
+    ws.mergeCells(k.row+1, k.col, k.row+1, k.col+2);
+    ws.getCell(k.row, k.col).value = k.label;
+    ws.getCell(k.row, k.col).font = { bold:true, size:10, color:{argb:'FF6B7280'} };
+    const v = ws.getCell(k.row+1, k.col);
+    v.value = k.value; v.font = { bold:true, size:16, color:{argb:k.color} };
+    if (k.pct) v.numFmt = '0.0%';
+    v.alignment = { horizontal:'center' };
+  });
+
+  // Gráficos
+  const barImg = generateChartImage({
+    type:'bar',
+    data:{ labels:accs.map(a=>a.name), datasets:[
+      { label:'Avance', data:accs.map(a=>+(calcGlobal(a)*100).toFixed(1)), backgroundColor:'#2563eb', borderRadius:6 },
+      { label:'Meta', data:accs.map(()=>+(calcMeta(state.controlDate)*100).toFixed(1)), backgroundColor:'#94a3b8', borderRadius:6 },
+    ]},
+    options:{ responsive:false, animation:false, plugins:{ title:{display:true,text:'Avance vs Meta por cuenta',font:{size:16,weight:'bold'}}, legend:{position:'bottom'}, datalabels:{display:false} }, scales:{ y:{ beginAtZero:true, max:100, ticks:{callback:v=>v+'%'} } } },
+  });
+
+  const doughnutImg = generateChartImage({
+    type:'doughnut',
+    data:{ labels:['Al día','Atraso menor','Atraso crítico','Finalizado','Sin datos'], datasets:[{ data:[counts['AL DÍA'],counts['ATRASO MENOR'],counts['ATRASO CRÍTICO']+counts['CRÍTICO'],counts.FINALIZADO,counts['SIN DATOS']], backgroundColor:['#16a34a','#f59e0b','#dc2626','#0d9488','#9ca3af'] }]},
+    options:{ responsive:false, animation:false, plugins:{ title:{display:true,text:'Distribución de estados',font:{size:16,weight:'bold'}}, legend:{position:'bottom'}, datalabels:{display:false} } },
+  });
+
+  // Insertar imágenes en filas específicas para que no se superpongan
+  ws.addImage(wb.addImage({base64:barImg,extension:'png'}), { tl:{col:0, row:13}, ext:{width:650,height:325} });
+  ws.addImage(wb.addImage({base64:doughnutImg,extension:'png'}), { tl:{col:11, row:13}, ext:{width:380,height:325} });
+
+  // Tabla de resumen (comienza en la fila 35 para dejar espacio a los gráficos)
+  const start = 35;
+  ws.mergeCells(`A${start}:F${start}`);
+  ws.getCell(`A${start}`).value = 'RESUMEN POR CUENTA';
+  ws.getCell(`A${start}`).font = { bold:true, size:13, color:{argb:'FF2563EB'} };
+  
+  ['Cuenta','Avance','Meta','Brecha','Fase','Estado'].forEach((h,i)=>{
+    const c = ws.getCell(start+1, 1+i);
+    c.value = h; c.font = { bold:true, color:{argb:'FFFFFFFF'} };
+    c.fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FF2563EB'} };
+    c.alignment = { horizontal:'center', vertical:'middle' };
+  });
+  
+  accs.forEach((a,i)=>{
+    const r = start+2+i, g = calcGlobal(a), m = calcMeta(state.controlDate), gap = g-m, st = calcStatus(a);
+    ws.getCell(r,1).value = a.name;
+    ws.getCell(r,2).value = g; ws.getCell(r,2).numFmt = '0.0%';
+    ws.getCell(r,3).value = m; ws.getCell(r,3).numFmt = '0.0%';
+    ws.getCell(r,4).value = gap; ws.getCell(r,4).numFmt = '+0.0%;-0.0%;0.0%';
+    ws.getCell(r,4).font = { color:{argb: gap<0?'FFDC2626':'FF16A34A'}, bold:true };
+    ws.getCell(r,5).value = calcPhase(a);
+    ws.getCell(r,6).value = st;
+    const cmap = { 'AL DÍA':'FFD1FAE5','ATRASO MENOR':'FFFEF3C7','ATRASO CRÍTICO':'FFFEE2E2','CRÍTICO':'FFFEE2E2',FINALIZADO:'FFCCFBF1','SIN DATOS':'FFF3F4F6' };
+    ws.getCell(r,6).fill = { type:'pattern', pattern:'solid', fgColor:{argb:cmap[st]||'FFFFFFFF'} };
+    ws.getCell(r,6).font = { bold:true };
+    ws.getCell(r,6).alignment = { horizontal:'center' };
+    ws.getRow(r).height = 20;
+  });
+
+  /* HOJA 2: ACTUALIZAR AVANCE */
+  const wsA = wb.addWorksheet('Actualizar Avance', { properties:{ tabColor:{argb:'FF16A34A'} } });
+  wsA.columns = [
+    {header:'Cuenta',key:'name',width:20},{header:'OSAs',key:'osas',width:8},{header:'Responsable',key:'responsible',width:22},
+    {header:'Total',key:'total',width:10},{header:'Revisados',key:'reviewed',width:12},{header:'Base ok',key:'baseCount',width:10},
+    {header:'AG-AS ok',key:'agasCount',width:10},{header:'QA ok',key:'qaCount',width:10},
+    {header:'% Base',key:'pctBase',width:10},{header:'% AG-AS',key:'pctAGAS',width:10},{header:'% QA',key:'pctQA',width:10},
+    {header:'Global',key:'global',width:10},{header:'Fecha',key:'updateDate',width:14},{header:'Meta',key:'meta',width:10},
+    {header:'Brecha',key:'gap',width:12},{header:'Fase',key:'phase',width:22},{header:'Bloqueo',key:'block',width:10},{header:'Estado',key:'status',width:14},
+  ];
+  accs.forEach(a=>wsA.addRow({
+    name:a.name, osas:a.osas, responsible:a.responsible, total:a.total, reviewed:a.reviewed,
+    baseCount:a.baseCount, agasCount:a.agasCount, qaCount:a.qaCount,
+    pctBase:pctBase(a), pctAGAS:pctAGAS(a), pctQA:pctQA(a), global:calcGlobal(a), updateDate:a.updateDate,
+    meta:calcMeta(state.controlDate), gap:calcGap(a), phase:calcPhase(a), block:a.criticalBlock?'Sí':'No', status:calcStatus(a),
+  }));
+  const hA = wsA.getRow(1);
+  hA.font = { bold:true, color:{argb:'FFFFFFFF'} };
+  hA.fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FF2563EB'} };
+  hA.height = 30;
+  [9,10,11,12,14].forEach(c=>wsA.getColumn(c).numFmt = '0.0%');
+  wsA.getColumn(15).numFmt = '+0.0%;-0.0%;0.0%';
+  wsA.eachRow((row,r)=>{
+    if (r===1) return;
+    const s = row.getCell(18);
+    const cmap = { 'AL DÍA':'FFD1FAE5','ATRASO MENOR':'FFFEF3C7','ATRASO CRÍTICO':'FFFEE2E2','CRÍTICO':'FFFEE2E2',FINALIZADO:'FFCCFBF1','SIN DATOS':'FFF3F4F6' };
+    if (cmap[s.value]) { s.fill = { type:'pattern', pattern:'solid', fgColor:{argb:cmap[s.value]} }; s.font = { bold:true }; }
+    s.alignment = { horizontal:'center' };
+    row.height = 20;
+  });
+  wsA.views = [{ state:'frozen', ySplit:1 }];
+  wsA.autoFilter = { from:'A1', to:'R1' };
+
+  /* HOJA 3: ACUERDOS Y RIESGOS */
+  if (state.risks.length) {
+    const wsR = wb.addWorksheet('Acuerdos y Riesgos', { properties:{ tabColor:{argb:'FFDC2626'} } });
+    wsR.columns = [
+      {header:'ID',key:'id',width:8},{header:'Fecha',key:'meetingDate',width:14},{header:'Cuenta',key:'account',width:18},
+      {header:'Categoría',key:'category',width:14},{header:'Detalle',key:'detail',width:40},{header:'Impacto',key:'impact',width:10},
+      {header:'Responsable',key:'responsible',width:20},{header:'Compromiso',key:'commitmentDate',width:14},
+      {header:'Estado',key:'status',width:12},{header:'Días',key:'days',width:10},{header:'Semáforo',key:'sem',width:12},{header:'Cierre',key:'closure',width:30},
+    ];
+    state.risks.forEach(r=>wsR.addRow({
+      id:r.id, meetingDate:r.meetingDate, account:r.account, category:r.category, detail:r.detail,
+      impact:r.impact, responsible:r.responsible, commitmentDate:r.commitmentDate, status:r.status,
+      days:calcRiskDays(r), sem:calcRiskSemaphore(r), closure:r.closure,
+    }));
+    const hR = wsR.getRow(1);
+    hR.font = { bold:true, color:{argb:'FFFFFFFF'} };
+    hR.fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FFDC2626'} };
+    hR.height = 30;
+    wsR.views = [{ state:'frozen', ySplit:1 }];
+  }
+
+  /* HOJA 4: HISTORIAL */
+  if (state.history.length) {
+    const wsH = wb.addWorksheet('Historial', { properties:{ tabColor:{argb:'FFF59E0B'} } });
+    wsH.columns = [
+      {header:'Fecha',key:'date',width:14},{header:'Cuenta',key:'account',width:20},{header:'OSAs',key:'osas',width:8},
+      {header:'Total',key:'total',width:10},{header:'Revisados',key:'reviewed',width:12},{header:'Base ok',key:'baseCount',width:10},
+      {header:'AG-AS ok',key:'agasCount',width:10},{header:'QA ok',key:'qaCount',width:10},
+      {header:'% Base',key:'pctBase',width:10},{header:'% AG-AS',key:'pctAGAS',width:10},{header:'% QA',key:'pctQA',width:10},
+      {header:'Global',key:'global',width:10},{header:'Estado',key:'status',width:14},{header:'Comentario',key:'comment',width:40},
+    ];
+    state.history.forEach(h=>wsH.addRow(h));
+    const hH = wsH.getRow(1);
+    hH.font = { bold:true, color:{argb:'FFFFFFFF'} };
+    hH.fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FFF59E0B'} };
+    hH.height = 30;
+    [9,10,11,12].forEach(c=>wsH.getColumn(c).numFmt = '0.0%');
+    wsH.views = [{ state:'frozen', ySplit:1 }];
+  }
+
+  const buf = await wb.xlsx.writeBuffer();
+  download(new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}), `MPS_Control_${new Date().toISOString().slice(0,10)}.xlsx`);
+  toast('✓ Excel exportado');
+}
+
+/* ========== UTILS / ACTIONS ========== */
+function download(blob, filename) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = filename;
+  a.click(); URL.revokeObjectURL(a.href);
+}
+let toastTimer;
+function toast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(()=>t.classList.remove('show'), 2400);
+}
+function takeSnapshot() {
+  const date = state.controlDate;
+  state.accounts.forEach(a => {
+    state.history.push({
+      date, account: a.name, osas: a.osas, total: a.total, reviewed: a.reviewed,
+      baseCount: a.baseCount, agasCount: a.agasCount, qaCount: a.qaCount,
+      pctBase: pctBase(a), pctAGAS: pctAGAS(a), pctQA: pctQA(a),
+      global: calcGlobal(a), status: calcStatus(a), comment: a.observations||'',
+    });
+  });
+  saveState();
+  toast(`Corte ${date} guardado (12 cuentas)`);
+  if (currentView === 'history') render();
+}
+
+/* ========== INIT ========== */
+async function init() {
+  state = await loadState();
+  if (!state.controlDate) state.controlDate = new Date().toISOString().slice(0,10);
+  
+  document.getElementById('controlDate').value = state.controlDate;
+  document.getElementById('controlDate').addEventListener('change', e => {
+    state.controlDate = e.target.value; saveState();
+    render(); toast('Fecha de control: ' + e.target.value);
+  });
+  
+  document.getElementById('btnSnapshot').addEventListener('click', takeSnapshot);
+  document.getElementById('btnExportExcel').addEventListener('click', () => {
+    exportToExcel().catch(err => { console.error(err); toast('Error al exportar: ' + err.message); });
+  });
+  
+  // Establecer pestaña activa inicial
+  document.querySelectorAll('.app-nav button').forEach(x=>x.classList.remove('active'));
+  const initialBtn = document.querySelector('.app-nav button[data-view="instructions"]');
+  if (initialBtn) initialBtn.classList.add('active');
+
+  document.querySelectorAll('.app-nav button').forEach(b => {
+    b.addEventListener('click', () => {
+      document.querySelectorAll('.app-nav button').forEach(x=>x.classList.remove('active'));
+      b.classList.add('active');
+      currentView = b.dataset.view; render();
+      window.scrollTo({top:0,behavior:'smooth'});
+    });
+  });
+
+  await restoreFileHandle();
+  startAutoSave();
+  setupUnloadWarning();
+  updateBackupStatus();
+  render();
+}
+
+init();
