@@ -359,10 +359,6 @@ function getLastSnapshotByAccount() {
   });
   return m;
 }
-function isWeekend(dateStr) {
-  const day = new Date(dateStr + 'T00:00:00').getDay();
-  return day === 0 || day === 6; // 0 = Domingo, 6 = Sábado
-}
 
 /* ========== RENDER ========== */
 function render() {
@@ -694,6 +690,7 @@ async function openImportModal(file) {
       if (okAgas && !hasEmpty) agasOk++; else if (hasEmpty && agasUnjustified.length<5) agasUnjustified.push(sStr);
     }
 
+    // Auto-detectar cuenta por nombre de archivo
     let matchedId = '';
     const fname = file.name.toLowerCase();
     for (const a of state.accounts) {
@@ -847,14 +844,7 @@ function renderGantt(app) {
             <th class="col-left">Fase</th>
             <th>Inicio</th>
             <th>Fin</th>
-            ${dates.map(d => {
-              const isTdy = d === today;
-              const isWknd = isWeekend(d);
-              let cls = 'gantt-day-header';
-              if (isTdy) cls += ' gantt-today-col';
-              else if (isWknd) cls += ' weekend-col';
-              return `<th class="${cls}"><span>${d.slice(5)}</span></th>`;
-            }).join('')}
+            ${dates.map(d => `<th class="gantt-day-header ${d === today ? 'gantt-today-col' : ''}"><span>${d.slice(5)}</span></th>`).join('')}
           </tr>
         </thead>
         <tbody>`;
@@ -870,15 +860,9 @@ function renderGantt(app) {
         <td style="${isFirst ? 'border-top:2px solid var(--gray-300)' : ''}">${ph.end.slice(5)}</td>
         ${dates.map(d => {
           const isActive = d >= ph.start && d <= ph.end;
-          const isTdy = d === today;
-          const isWknd = isWeekend(d);
-          
-          let cls = '';
-          if (isTdy) cls = 'gantt-today-col';
-          else if (isWknd) cls = 'weekend-col';
-          
+          const isTodayCol = d === today ? 'gantt-today-col' : '';
           const borderTop = isFirst ? 'border-top:2px solid var(--gray-300);' : '';
-          return `<td class="${cls}" style="padding:0; ${borderTop}">
+          return `<td class="${isTodayCol}" style="padding:0; ${borderTop}">
             ${isActive ? `<div class="gantt-active-cell" style="background:${ph.color}; width:100%; height:24px;"></div>` : ''}
           </td>`;
         }).join('')}
@@ -1481,6 +1465,7 @@ async function exportToExcel() {
     s.alignment = { horizontal:'center' };
     row.height = 22;
     
+    // Estilo cebra y bordes
     row.eachCell(cell => {
       if (r % 2 === 0) cell.fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FFF9FAFB'} };
       cell.border = { top:{style:'thin', color:{argb:'FFE5E7EB'}}, left:{style:'thin', color:{argb:'FFE5E7EB'}}, bottom:{style:'thin', color:{argb:'FFE5E7EB'}}, right:{style:'thin', color:{argb:'FFE5E7EB'}} };
@@ -1532,4 +1517,89 @@ async function exportToExcel() {
     state.history.forEach(h=>wsH.addRow(h));
     const hH = wsH.getRow(1);
     hH.font = { bold:true, color:{argb:'FFFFFFFF'} };
-    hH.fill = { type:'pattern', pattern:'solid',
+    hH.fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FF1E40AF'} };
+    hH.height = 30;
+    [9,10,11,12].forEach(c=>wsH.getColumn(c).numFmt = '0.0%');
+    
+    wsH.eachRow((row,r)=>{
+      if (r===1) return;
+      row.height = 22;
+      row.eachCell(cell => {
+        if (r % 2 === 0) cell.fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FFF9FAFB'} };
+        cell.border = { top:{style:'thin', color:{argb:'FFE5E7EB'}}, left:{style:'thin', color:{argb:'FFE5E7EB'}}, bottom:{style:'thin', color:{argb:'FFE5E7EB'}}, right:{style:'thin', color:{argb:'FFE5E7EB'}} };
+      });
+    });
+    wsH.views = [{ state:'frozen', ySplit:1 }];
+  }
+
+  const buf = await wb.xlsx.writeBuffer();
+  download(new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}), `MPS_Control_${new Date().toISOString().slice(0,10)}.xlsx`);
+  toast('✓ Excel profesional exportado');
+}
+
+/* ========== UTILS / ACTIONS ========== */
+function download(blob, filename) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = filename;
+  a.click(); URL.revokeObjectURL(a.href);
+}
+let toastTimer;
+function toast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(()=>t.classList.remove('show'), 2400);
+}
+function takeSnapshot() {
+  const date = state.controlDate;
+  state.accounts.forEach(a => {
+    state.history.push({
+      date, account: a.name, osas: a.osas, total: a.total, reviewed: a.reviewed,
+      baseCount: a.baseCount, agasCount: a.agasCount, qaCount: a.qaCount,
+      pctBase: pctBase(a), pctAGAS: pctAGAS(a), pctQA: pctQA(a),
+      global: calcGlobal(a), status: calcStatus(a), comment: a.observations||'',
+    });
+  });
+  saveState();
+  toast(`Corte ${date} guardado (12 cuentas)`);
+  if (currentView === 'history') render();
+}
+
+/* ========== INIT ========== */
+async function init() {
+  state = await loadState();
+  if (!state.controlDate) state.controlDate = new Date().toISOString().slice(0,10);
+  
+  document.getElementById('controlDate').value = state.controlDate;
+  document.getElementById('controlDate').addEventListener('change', e => {
+    state.controlDate = e.target.value; saveState();
+    render(); toast('Fecha de control: ' + e.target.value);
+  });
+  
+  document.getElementById('btnSnapshot').addEventListener('click', takeSnapshot);
+  document.getElementById('btnExportExcel').addEventListener('click', () => {
+    exportToExcel().catch(err => { console.error(err); toast('Error al exportar: ' + err.message); });
+  });
+  
+  // Establecer pestaña activa inicial
+  document.querySelectorAll('.app-nav button').forEach(x=>x.classList.remove('active'));
+  const initialBtn = document.querySelector('.app-nav button[data-view="instructions"]');
+  if (initialBtn) initialBtn.classList.add('active');
+
+  document.querySelectorAll('.app-nav button').forEach(b => {
+    b.addEventListener('click', () => {
+      document.querySelectorAll('.app-nav button').forEach(x=>x.classList.remove('active'));
+      b.classList.add('active');
+      currentView = b.dataset.view; render();
+      window.scrollTo({top:0,behavior:'smooth'});
+    });
+  });
+
+  await restoreFileHandle();
+  startAutoSave();
+  setupUnloadWarning();
+  updateBackupStatus();
+  render();
+}
+
+init();
