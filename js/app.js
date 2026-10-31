@@ -4,7 +4,6 @@
 const STORAGE_KEY = 'mps_inv_2026_v1';
 const WEIGHTS = { base: 0.45, agas: 0.35, qa: 0.20 };
 
-// Registrar el plugin de etiquetas de datos
 if (typeof Chart !== 'undefined' && typeof ChartDataLabels !== 'undefined') {
   Chart.register(ChartDataLabels);
 }
@@ -374,6 +373,7 @@ function render() {
   else if (currentView === 'history') renderHistory(app);
   else if (currentView === 'schedule') renderSchedule(app);
   else if (currentView === 'backups') renderBackups(app);
+  else if (currentView === 'instructions') renderInstructions(app);
   else if (currentView === 'settings') renderSettings(app);
 }
 
@@ -441,25 +441,49 @@ function renderDashboard(app) {
     <div class="card">
       <h2>Hitos del proyecto</h2>
       <div class="table-wrap"><table>
-        <thead><tr><th>Hito</th><th>Fecha</th><th>Meta</th><th>Resultado</th><th>Situación</th></tr></thead>
+        <thead><tr><th>Hito</th><th>Fecha</th><th>Meta</th><th>Resultado</th><th>Situación</th><th>Comentarios</th></tr></thead>
         <tbody>${[
           {name:'Preparación',date:'2026-10-30',meta:0.10},{name:'Inventario base',date:'2026-11-06',meta:0.55},
           {name:'Corte AG-AS',date:'2026-11-13',meta:0.75},{name:'Cierre AG-AS',date:'2026-11-20',meta:0.90},
           {name:'QA',date:'2026-11-27',meta:0.98},{name:'Cierre',date:'2026-11-30',meta:1.00},
         ].map(h=>{
-          let sit;
-          if (state.controlDate < h.date) sit = 'PRÓXIMO';
-          else if (h.name === 'Preparación') sit = prepDone === 12 ? 'CUMPLIDO · 100%' : 'PENDIENTE';
-          else sit = avgProgress >= h.meta ? 'CUMPLIDO · '+fmtPct(avgProgress) : 'PENDIENTE';
+          let sit, comment = '';
+          
+          if (state.controlDate < h.date) {
+            sit = 'PRÓXIMO';
+            comment = 'Aún no es la fecha de evaluación.';
+          } else if (h.name === 'Preparación') {
+            const pending = accs.filter(a => !(a.responsible && a.total > 0));
+            if (pending.length === 0) {
+              sit = 'CUMPLIDO · 100%';
+              comment = 'Todas las cuentas listas.';
+            } else if (pending.length === 1 && pending[0].id === 'provida') {
+              sit = 'CUMPLIDO · EXCEPCIÓN';
+              comment = 'PROVIDA excluida (No está en DCC).';
+            } else {
+              sit = 'PENDIENTE';
+              comment = `Falta completar: ${pending.map(p=>p.name).join(', ')}`;
+            }
+          } else {
+            sit = avgProgress >= h.meta ? 'CUMPLIDO · '+fmtPct(avgProgress) : 'PENDIENTE';
+            comment = avgProgress >= h.meta ? 'Meta alcanzada.' : `Brecha global de ${(h.meta*100 - avgProgress*100).toFixed(1)} pts.`;
+          }
+          
           const cls = sit.startsWith('CUMPLIDO')?'badge-verde':sit==='PENDIENTE'?'badge-rojo':'badge-sin-fecha';
-          return `<tr><td>${h.name}</td><td>${h.date}</td><td>${fmtPct(h.meta)}</td><td>${fmtPct(avgProgress)}</td><td><span class="badge ${cls}">${sit}</span></td></tr>`;
+          return `<tr>
+            <td>${h.name}</td>
+            <td>${h.date}</td>
+            <td>${fmtPct(h.meta)}</td>
+            <td>${fmtPct(avgProgress)}</td>
+            <td><span class="badge ${cls}">${sit}</span></td>
+            <td style="font-size:12px;color:var(--gray-600)">${comment}</td>
+          </tr>`;
         }).join('')}
         </tbody>
       </table></div>
     </div>
   `;
 
-  // GRÁFICO DE BARRAS CON ETIQUETAS
   charts.progress = new Chart(document.getElementById('chartProgress'), {
     type:'bar',
     data:{ labels:accs.map(a=>a.name), datasets:[
@@ -475,7 +499,6 @@ function renderDashboard(app) {
     }
   });
 
-  // GRÁFICO DE TORTA CON ETIQUETAS
   charts.status = new Chart(document.getElementById('chartStatus'), {
     type:'doughnut',
     data:{ labels:['Al día','Atraso menor','Atraso crítico','Finalizado','Sin datos'], datasets:[{
@@ -774,7 +797,6 @@ function openReunionModal(accountId) {
 
 /* ---------- GANTT TIPO EXCEL ---------- */
 function renderGantt(app) {
-  // Generar días desde el 29 de octubre al 30 de noviembre
   const dates = [];
   let curr = new Date('2026-10-29T00:00:00');
   const end = new Date('2026-11-30T00:00:00');
@@ -988,6 +1010,7 @@ async function renderBackups(app) {
             <div><div class="snapshot-date">${new Date(s.date).toLocaleString('es-CL')}</div><div class="snapshot-meta">${accCount} cuentas · ${s.state.history?.length || 0} cortes</div></div>
             <div style="text-align:right"><div class="snapshot-meta">ID</div><div style="font-family:monospace;font-size:11px">#${s.id}</div></div>
             <button class="btn btn-sm" data-restore="${s.id}">Restaurar</button>
+            <button class="btn-del-snap" data-del-snap="${s.id}" title="Eliminar respaldo">✕</button>
           </div>`;
         }).join('')}
       </div>`}
@@ -1023,6 +1046,72 @@ async function renderBackups(app) {
       await addSnapshot(state); state = JSON.parse(JSON.stringify(snap.state)); await dbPut(STORE_CURRENT, 'current', state); saveState(); toast('✓ Restaurado'); render();
     });
   });
+  app.querySelectorAll('[data-del-snap]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const id = +btn.dataset.delSnap;
+      if (!confirm('¿Eliminar este respaldo permanentemente?')) return;
+      await dbDelete(STORE_SNAPSHOTS, id);
+      render();
+    });
+  });
+}
+
+/* ---------- INSTRUCCIONES ---------- */
+function renderInstructions(app) {
+  app.innerHTML = `
+    <div class="card">
+      <h2>📖 Guía de Uso e Instrucciones</h2>
+      <p class="help" style="margin-bottom:20px">Esta guía te explica paso a paso cómo usar la aplicación, ya sea que tengas la información a mano o que necesites importar los archivos Excel de los OSAs.</p>
+      
+      <div class="instruction-step">
+        <h4>1. Carga Manual de Datos (Registro por Registro)</h4>
+        <p>Este método se usa cuando estás en una reunión con el OSA y él te dicta los números, o cuando prefieres ingresar los datos directamente.</p>
+        <ul>
+          <li>Ve a la pestaña <strong>Cuentas</strong> o <strong>Plan Semanal</strong>.</li>
+          <li>Si estás en Plan Semanal, haz clic en <strong>"Iniciar reunión →"</strong> en la cuenta que vas a revisar. Se abrirá una ventana (modal).</li>
+          <li>Si estás en Cuentas, puedes editar directamente en la tabla, o usar el botón "Iniciar reunión" (no visible en la tabla principal, pero puedes hacerlo desde Plan Semanal).</li>
+          <li>En la ventana de la reunión, ingresa las cantidades exactas:
+            <ul>
+              <li><strong>Total equipos:</strong> El universo total de la cuenta.</li>
+              <li><strong>Revisados:</strong> Cuántos equipos ha inspeccionado el OSA en total.</li>
+              <li><strong>Base A-AF ok:</strong> Cuántos de los revisados ya tienen las primeras 32 columnas completas.</li>
+              <li><strong>AG-AS ok:</strong> Cuántos tienen las 13 columnas avanzadas completas.</li>
+              <li><strong>QA ok:</strong> Cuántos han pasado validación de calidad.</li>
+            </ul>
+          </li>
+          <li>Si hay un bloqueo, márcalo y describe la próxima acción y fecha de compromiso.</li>
+          <li>Haz clic en <strong>"Guardar corte de esta cuenta"</strong> para que el sistema calcule los porcentajes, actualice el semáforo y guarde una foto en el historial.</li>
+        </ul>
+      </div>
+
+      <div class="instruction-step">
+        <h4>2. Carga Automática desde Excel del OSA</h4>
+        <p>Si el OSA te envía su archivo de inventario (el que tiene las 45 columnas de la A a la AS), la app puede leerlo y contar automáticamente.</p>
+        <ul>
+          <li>Ve a la pestaña <strong>Cuentas</strong>.</li>
+          <li>Haz clic en el botón azul <strong>"📂 Importar Excel de OSA"</strong> (arriba a la derecha).</li>
+          <li>Selecciona el archivo `.xlsx` o `.xls` que te envió el OSA.</li>
+          <li>La app procesará el archivo y te mostrará un resumen: cuántos equipos encontró, cuántos tienen la Base completa y cuántos tienen AG-AS.</li>
+          <li>En la parte inferior del resumen, elige a qué cuenta pertenece ese archivo (ej: FASA).</li>
+          <li>Haz clic en <strong>"Aplicar"</strong> y todos los datos se cargarán de golpe.</li>
+        </ul>
+        <div class="highlight-box">
+          <strong>Nota importante:</strong> El sistema cuenta como "completo" cualquier celda que tenga un valor, incluyendo textos como "No Aplica" o "N/A". Si la celda está totalmente vacía, se considera pendiente.
+        </div>
+      </div>
+
+      <div class="instruction-step">
+        <h4>3. Sistema de Respaldos (5 Capas)</h4>
+        <p>Nunca perderás tu avance. La aplicación guarda copias de seguridad automáticamente en tu navegador y en una carpeta local.</p>
+        <ul>
+          <li><strong>Capa 1 y 2:</strong> Se guarda automáticamente en tu navegador al hacer cualquier cambio.</li>
+          <li><strong>Capa 3 (Máquina del tiempo):</strong> Cada vez que guardas un corte, el sistema crea una "foto" (snapshot) que puedes restaurar o eliminar desde la pestaña <strong>🛡 Respaldos</strong>.</li>
+          <li><strong>Capa 4 (Carpeta Local):</strong> Ve a la pestaña <strong>🛡 Respaldos</strong> y haz clic en "📁 Elegir carpeta de respaldo". Selecciona una carpeta en tu OneDrive, Google Drive o Dropbox. La app guardará un archivo `.json` cada vez que cambies algo, y tu nube lo subirá sola.</li>
+          <li><strong>Capa 5 (Descarga manual):</strong> Puedes usar el botón "⬇ Descargar JSON ahora" para tener un respaldo físico en tu computadora.</li>
+        </ul>
+      </div>
+    </div>
+  `;
 }
 
 /* ---------- SETTINGS ---------- */
