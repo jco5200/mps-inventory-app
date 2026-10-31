@@ -88,7 +88,7 @@ const SCHEDULE = [
 ];
 
 let state = null;
-let currentView = 'instructions'; // Iniciamos en instrucciones
+let currentView = 'instructions';
 let charts = {};
 
 /* ========== SISTEMA DE RESPALDO (5 CAPAS) ========== */
@@ -539,10 +539,11 @@ function renderPlan(app) {
         <div style="text-align:right"><div style="font-size:32px;font-weight:700;color:var(--primary);line-height:1">${fmtPct(avg)}</div><div class="help">Avance promedio</div></div>
       </div>
     </div>
-    ${isPrep ? `<div class="card"><h2>Checklist de preparación</h2><div class="prep-grid">
-      ${state.accounts.map(a=>{const ok=a.responsible&&a.total>0;return `<div class="prep-item ${ok?'ok':'pending'}">
+    ${isPrep ? `<div class="card"><h2>Checklist de preparación</h2><p class="help" style="margin-bottom:16px">Haz clic en cualquier cuenta para editar su información base o iniciar la reunión.</p><div class="prep-grid">
+      ${state.accounts.map(a=>{const ok=a.responsible&&a.total>0;return `<div class="prep-item ${ok?'ok':'pending'}" style="cursor:pointer; transition: box-shadow 0.2s" onmouseover="this.style.boxShadow='0 4px 6px -1px rgba(0,0,0,0.1)'" onmouseout="this.style.boxShadow='none'" data-meeting="${a.id}">
         <div class="prep-icon">${ok?'✓':'○'}</div>
-        <div><strong>${a.name}</strong><div class="help">${ok?`${a.responsible} · ${a.total} equipos`:'Pendiente'}</div></div>
+        <div style="flex:1"><strong>${a.name}</strong><div class="help">${ok?`${a.responsible} · ${a.total} equipos`:'Pendiente'}</div></div>
+        <button class="btn btn-sm btn-primary">✎ Editar</button>
       </div>`;}).join('')}
     </div></div>` : `<div class="card"><h2>Reuniones prioritarias</h2><p class="help">Ordenadas por prioridad. Empezá por las rojas.</p>
       <div class="reunion-list">${sorted.map(a=>{
@@ -646,7 +647,7 @@ function renderAccounts(app) {
   });
 }
 
-/* ---------- IMPORTAR OSA ---------- */
+/* ---------- IMPORTAR OSA (CON AUTO-DETECCIÓN POR NOMBRE) ---------- */
 async function openImportModal(file) {
   const modal = document.getElementById('importModal');
   const body = document.getElementById('modalBody');
@@ -689,6 +690,19 @@ async function openImportModal(file) {
       if (okAgas && !hasEmpty) agasOk++; else if (hasEmpty && agasUnjustified.length<5) agasUnjustified.push(sStr);
     }
 
+    // Auto-detectar cuenta por nombre de archivo
+    let matchedId = '';
+    const fname = file.name.toLowerCase();
+    for (const a of state.accounts) {
+        // Buscamos si el nombre de la cuenta (ej: "U CENTRAL") o su ID (ej: "u-central") está en el nombre del archivo
+        const safeName = a.name.toLowerCase().replace(/\s+/g, '_'); // convierte "U CENTRAL" a "u_central"
+        const safeNameNoSpace = a.name.toLowerCase().replace(/\s+/g, ''); // "ucentral"
+        if (fname.includes(safeName) || fname.includes(safeNameNoSpace) || fname.includes(a.id.toLowerCase())) {
+            matchedId = a.id;
+            break;
+        }
+    }
+
     body.innerHTML = `
       <div style="display:grid;grid-template-columns:1fr auto;gap:12px;margin-bottom:16px;font-size:14px">
         <span>Total equipos detectados</span><strong>${total}</strong>
@@ -697,11 +711,15 @@ async function openImportModal(file) {
       </div>
       ${baseEmpty.length ? `<div style="background:#fffbeb;border-left:3px solid var(--warning);padding:10px;font-size:12px;color:#92400e;margin-bottom:10px"><strong>⚠ ${total-baseOk} equipos sin Base A-AF completa.</strong><br>Ej: ${baseEmpty.join(', ')}</div>` : ''}
       ${agasUnjustified.length ? `<div style="background:#fffbeb;border-left:3px solid var(--warning);padding:10px;font-size:12px;color:#92400e"><strong>⚠ ${total-agasOk} equipos sin AG-AS completa.</strong><br>Ej: ${agasUnjustified.join(', ')}</div>` : ''}
-      <p class="help" style="margin-top:16px">Seleccioná a qué cuenta querés aplicar estos datos:</p>
-      <select id="importTargetAccount" style="width:100%;padding:8px;border:1px solid var(--gray-300);border-radius:6px;font-family:inherit">
-        <option value="">-- Seleccionar cuenta --</option>
-        ${state.accounts.map(a => `<option value="${a.id}">${a.name}</option>`).join('')}
-      </select>
+      
+      <div style="background:#eff6ff;padding:12px;border-radius:8px;margin-top:16px;margin-bottom:16px">
+        <p class="help" style="margin-bottom:8px">Seleccioná a qué cuenta querés aplicar estos datos (se intentó auto-detectar por nombre):</p>
+        <select id="importTargetAccount" style="width:100%;padding:10px;border:1px solid var(--gray-300);border-radius:6px;font-family:inherit;font-weight:600">
+          <option value="">-- Seleccionar cuenta --</option>
+          ${state.accounts.map(a => `<option value="${a.id}" ${a.id === matchedId ? 'selected' : ''}>${a.name}</option>`).join('')}
+        </select>
+        ${matchedId ? `<p style="font-size:12px;color:var(--success);margin-top:8px;font-weight:600">✓ Cuenta detectada automáticamente en el nombre del archivo.</p>` : ''}
+      </div>
     `;
 
     btnConfirm.disabled = false;
@@ -1110,8 +1128,8 @@ function renderInstructions(app) {
         <h4>Cómo actualizar el libro en menos de 5 minutos</h4>
         <p><strong>Opción A: Registro Manual (Reunión con el OSA)</strong></p>
         <ol style="padding-left: 24px; font-size: 14px; color: var(--gray-700); margin-bottom: 16px;">
-          <li>Ve a <strong>Plan Semanal</strong> y haz clic en <strong>"Iniciar reunión →"</strong> en la cuenta que vas a revisar.</li>
-          <li>En la ventana, ingresa las cantidades exactas dictadas por el OSA (Total, Revisados, Base, AG-AS, QA).</li>
+          <li>Ve a <strong>Plan Semanal</strong> (o <strong>Inventario Cuentas</strong>) y haz clic en la fila/tarjeta de la cuenta que vas a revisar.</li>
+          <li>En la ventana que se abre, ingresa las cantidades exactas dictadas por el OSA (Total, Revisados, Base, AG-AS, QA).</li>
           <li>Si hay un bloqueo, márcalo y describe la próxima acción, responsable y fecha compromiso.</li>
           <li>Haz clic en <strong>"Guardar corte de esta cuenta"</strong>. Los porcentajes y el semáforo se calculan solos.</li>
         </ol>
@@ -1119,7 +1137,7 @@ function renderInstructions(app) {
         <ol style="padding-left: 24px; font-size: 14px; color: var(--gray-700);">
           <li>Ve a <strong>Inventario Cuentas</strong> y haz clic en <strong>"📂 Importar Excel de OSA"</strong>.</li>
           <li>Selecciona el archivo del OSA. El sistema contará automáticamente cuántos equipos tienen la Base (32 columnas) y AG-AS (13 columnas) completas.</li>
-          <li>Elige a qué cuenta pertenece el archivo y haz clic en Aplicar.</li>
+          <li>💡 <strong>Truco:</strong> Si el archivo incluye el nombre de la cuenta en su nombre (ej: <em>FASA_Inventario_Octubre.xlsx</em>), el sistema <strong>seleccionará la cuenta automáticamente</strong>. De lo contrario, elígela manualmente del menú desplegable y haz clic en Aplicar.</li>
         </ol>
       </div>
 
