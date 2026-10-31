@@ -27,7 +27,7 @@ main { padding: 24px 28px; max-width: 1600px; margin: 0 auto; }
 
 .card { background: #fff; border: 1px solid var(--gray-200); border-radius: var(--radius); box-shadow: var(--shadow); padding: 20px; margin-bottom: 20px; }
 .card h2 { font-size: 15px; font-weight: 600; margin-bottom: 16px; color: var(--gray-900); }
-.card h3 { font-size: 12px; font-weight: 600; margin-bottom: 10px; color: var(--gray-700); text-transform: uppercase; letter-spacing: .5px; }
+.card h3 { font-size: 13px; font-weight: 600; margin-bottom: 10px; color: var(--gray-700); text-transform: uppercase; letter-spacing: .5px; }
 
 .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 20px; }
 .kpi { background: #fff; border: 1px solid var(--gray-200); border-radius: var(--radius); padding: 20px; box-shadow: var(--shadow); position: relative; overflow: hidden; }
@@ -141,10 +141,20 @@ td select { min-width: 100px; }
 .backup-card.danger { background: rgba(220,38,38,.25); }
 
 .snapshot-list { max-height: 500px; overflow-y: auto; }
-.snapshot-item { display: grid; grid-template-columns: 1fr auto auto; gap: 16px; padding: 12px 16px; border-bottom: 1px solid var(--gray-100); align-items: center; font-size: 13px; }
+.snapshot-item { display: grid; grid-template-columns: 1fr auto auto auto; gap: 16px; padding: 12px 16px; border-bottom: 1px solid var(--gray-100); align-items: center; font-size: 13px; }
 .snapshot-item:hover { background: var(--gray-50); }
 .snapshot-date { font-weight: 600; }
 .snapshot-meta { color: var(--gray-600); font-size: 12px; }
+.btn-del-snap { background: #fee2e2; color: #991b1b; border: none; border-radius: 6px; padding: 4px 8px; cursor: pointer; font-weight: bold; transition: all .15s; }
+.btn-del-snap:hover { background: #fecaca; }
+
+/* INSTRUCCIONES */
+.instruction-step { background: #f8fafc; border-left: 4px solid var(--primary); padding: 16px; border-radius: 8px; margin-bottom: 16px; }
+.instruction-step h4 { font-size: 14px; font-weight: 600; margin-bottom: 8px; color: var(--primary); }
+.instruction-step p, .instruction-step ul { font-size: 13px; color: var(--gray-700); margin-bottom: 8px; }
+.instruction-step ul { padding-left: 20px; }
+.instruction-step li { margin-bottom: 4px; }
+.highlight-box { background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; padding: 16px; margin-top: 20px; }
 
 .empty { padding: 40px; text-align: center; color: var(--gray-400); font-size: 13px; }
 .help { font-size: 12px; color: var(--gray-600); margin-top: 8px; }
