@@ -789,7 +789,7 @@ function renderRisks(app) {
     const sem = calcRiskSemaphore(r), days = calcRiskDays(r);
     const cls = { 'CERRADO':'badge-finalizado','VENCIDO':'badge-rojo','URGENTE':'badge-ambar','EN PLAZO':'badge-verde','SIN FECHA':'badge-sin-fecha' }[sem];
     return `<tr data-i="${i}">
-      <td style="white-space:nowrap; width:1%"><strong>${r.id}</strong></td>
+      <td style="white-space: nowrap; min-width: 60px;"><strong>${r.id}</strong></td>
       <td><input type="date" value="${r.meetingDate||''}" data-field="meetingDate"></td>
       <td><input type="text" value="${r.account||''}" data-field="account" style="min-width:120px"></td>
       <td><select data-field="category" style="min-width:110px">${['Dato faltante','Acceso','Capacidad','Calidad','Plazo','Decisión','Otro'].map(c=>`<option ${r.category===c?'selected':''}>${c}</option>`).join('')}</select></td>
