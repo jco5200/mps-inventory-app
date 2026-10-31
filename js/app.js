@@ -441,7 +441,7 @@ function renderDashboard(app) {
     <div class="card">
       <h2>Hitos del proyecto</h2>
       <div class="table-wrap"><table>
-        <thead><tr><th>Hito</th><th>Fecha</th><th>Meta</th><th>Resultado</th><th>Situación</th><th>Comentarios</th></tr></thead>
+        <thead><tr><th>Hito</th><th>Fecha</th><th>Meta</th><th>Resultado</th><th>Situación</th><th>Comentarios / Justificación</th></tr></thead>
         <tbody>${[
           {name:'Preparación',date:'2026-10-30',meta:0.10},{name:'Inventario base',date:'2026-11-06',meta:0.55},
           {name:'Corte AG-AS',date:'2026-11-13',meta:0.75},{name:'Cierre AG-AS',date:'2026-11-20',meta:0.90},
@@ -563,17 +563,24 @@ function renderPlan(app) {
   app.querySelectorAll('[data-meeting]').forEach(b=>b.addEventListener('click',()=>openReunionModal(b.dataset.meeting)));
 }
 
-/* ---------- CUENTAS ---------- */
+/* ---------- INVENTARIO CUENTAS ---------- */
 function renderAccounts(app) {
   const warnings = validateAll();
   const lastSnap = getLastSnapshotByAccount();
   app.innerHTML = `<div class="card">
     <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:16px">
-      <div><h2>Actualización por cuenta</h2><p class="help">Ingresá conteos. Los % se calculan solos.</p></div>
+      <div><h2>Inventario por Cuenta</h2><p class="help">Ingresá conteos. Los % se calculan solos.</p></div>
       <button class="btn btn-primary" id="btnImportOSA">📂 Importar Excel de OSA</button>
     </div>
     <div class="table-wrap"><table>
-      <thead><tr><th>Cuenta</th><th>OSAs</th><th>Responsable</th><th>Total</th><th>Revisados</th><th>Base ok</th><th>AG-AS ok</th><th>QA ok</th><th>% Base</th><th>% AG-AS</th><th>% QA</th><th>Global</th><th>Δ</th><th>Fecha</th><th>Meta</th><th>Brecha</th><th>Fase</th><th>Bloqueo</th><th>Próx. acción</th><th>Resp.</th><th>Fecha comp.</th><th>Estado</th></tr></thead>
+      <thead><tr>
+        <th>Cuenta</th><th>OSAs</th><th>Responsable</th><th>Total</th><th>Revisados</th>
+        <th>Base ok</th><th>AG-AS ok</th><th>QA ok</th>
+        <th>% Base</th><th>% AG-AS</th><th>% QA</th><th>Global</th><th>Δ</th>
+        <th>Fecha</th><th>Meta</th><th>Brecha</th><th>Fase</th><th>Bloqueo</th>
+        <th>Próx. acción</th><th>Resp.</th><th>Fecha comp.</th>
+        <th style="min-width:150px">Observaciones / Justificación</th><th>Estado</th>
+      </tr></thead>
       <tbody id="accountsBody"></tbody>
     </table></div>
   </div>`;
@@ -604,6 +611,7 @@ function renderAccounts(app) {
       <td><input type="text" value="${a.nextAction||''}" data-field="nextAction" style="min-width:120px"></td>
       <td><input type="text" value="${a.actionResponsible||''}" data-field="actionResponsible" style="min-width:110px"></td>
       <td><input type="date" value="${a.commitmentDate||''}" data-field="commitmentDate"></td>
+      <td><input type="text" value="${a.observations||''}" data-field="observations" placeholder="Justificación..."></td>
       <td><span class="badge ${statusClass(st)}">${st}</span></td>
     </tr>`;
   }).join('');
@@ -1010,7 +1018,7 @@ async function renderBackups(app) {
             <div><div class="snapshot-date">${new Date(s.date).toLocaleString('es-CL')}</div><div class="snapshot-meta">${accCount} cuentas · ${s.state.history?.length || 0} cortes</div></div>
             <div style="text-align:right"><div class="snapshot-meta">ID</div><div style="font-family:monospace;font-size:11px">#${s.id}</div></div>
             <button class="btn btn-sm" data-restore="${s.id}">Restaurar</button>
-            <button class="btn-del-snap" data-del-snap="${s.id}" title="Eliminar respaldo">✕</button>
+            <button class="btn-del-snap" data-del-snap="${s.id}" title="Eliminar respaldo">🗑️ Eliminar</button>
           </div>`;
         }).join('')}
       </div>`}
@@ -1052,6 +1060,7 @@ async function renderBackups(app) {
       if (!confirm('¿Eliminar este respaldo permanentemente?')) return;
       await dbDelete(STORE_SNAPSHOTS, id);
       render();
+      toast('Respaldo eliminado');
     });
   });
 }
@@ -1067,10 +1076,10 @@ function renderInstructions(app) {
         <h4>1. Carga Manual de Datos (Registro por Registro)</h4>
         <p>Este método se usa cuando estás en una reunión con el OSA y él te dicta los números, o cuando prefieres ingresar los datos directamente.</p>
         <ul>
-          <li>Ve a la pestaña <strong>Cuentas</strong> o <strong>Plan Semanal</strong>.</li>
-          <li>Si estás en Plan Semanal, haz clic en <strong>"Iniciar reunión →"</strong> en la cuenta que vas a revisar. Se abrirá una ventana (modal).</li>
-          <li>Si estás en Cuentas, puedes editar directamente en la tabla, o usar el botón "Iniciar reunión" (no visible en la tabla principal, pero puedes hacerlo desde Plan Semanal).</li>
-          <li>En la ventana de la reunión, ingresa las cantidades exactas:
+          <li>Ve a la pestaña <strong>Inventario Cuentas</strong> o <strong>Plan Semanal</strong>.</li>
+          <li>Si estás en Plan Semanal, haz clic en <strong>"Iniciar reunión →"</strong> en la cuenta que vas a revisar. Se abrirá una ventana.</li>
+          <li>Si estás en Inventario Cuentas, puedes editar directamente en la tabla.</li>
+          <li>En la tabla o ventana, ingresa las cantidades exactas:
             <ul>
               <li><strong>Total equipos:</strong> El universo total de la cuenta.</li>
               <li><strong>Revisados:</strong> Cuántos equipos ha inspeccionado el OSA en total.</li>
@@ -1079,8 +1088,9 @@ function renderInstructions(app) {
               <li><strong>QA ok:</strong> Cuántos han pasado validación de calidad.</li>
             </ul>
           </li>
-          <li>Si hay un bloqueo, márcalo y describe la próxima acción y fecha de compromiso.</li>
-          <li>Haz clic en <strong>"Guardar corte de esta cuenta"</strong> para que el sistema calcule los porcentajes, actualice el semáforo y guarde una foto en el historial.</li>
+          <li>Si hay un bloqueo, márcalo y describe la próxima acción, responsable y fecha de compromiso.</li>
+          <li>Si tienes alguna justificación o comentario adicional, escríbela en la columna <strong>Observaciones / Justificación</strong>.</li>
+          <li>Haz clic en <strong>"Guardar corte"</strong> para que el sistema calcule los porcentajes, actualice el semáforo y guarde una foto en el historial.</li>
         </ul>
       </div>
 
@@ -1088,7 +1098,7 @@ function renderInstructions(app) {
         <h4>2. Carga Automática desde Excel del OSA</h4>
         <p>Si el OSA te envía su archivo de inventario (el que tiene las 45 columnas de la A a la AS), la app puede leerlo y contar automáticamente.</p>
         <ul>
-          <li>Ve a la pestaña <strong>Cuentas</strong>.</li>
+          <li>Ve a la pestaña <strong>Inventario Cuentas</strong>.</li>
           <li>Haz clic en el botón azul <strong>"📂 Importar Excel de OSA"</strong> (arriba a la derecha).</li>
           <li>Selecciona el archivo `.xlsx` o `.xls` que te envió el OSA.</li>
           <li>La app procesará el archivo y te mostrará un resumen: cuántos equipos encontró, cuántos tienen la Base completa y cuántos tienen AG-AS.</li>
@@ -1105,7 +1115,7 @@ function renderInstructions(app) {
         <p>Nunca perderás tu avance. La aplicación guarda copias de seguridad automáticamente en tu navegador y en una carpeta local.</p>
         <ul>
           <li><strong>Capa 1 y 2:</strong> Se guarda automáticamente en tu navegador al hacer cualquier cambio.</li>
-          <li><strong>Capa 3 (Máquina del tiempo):</strong> Cada vez que guardas un corte, el sistema crea una "foto" (snapshot) que puedes restaurar o eliminar desde la pestaña <strong>🛡 Respaldos</strong>.</li>
+          <li><strong>Capa 3 (Máquina del tiempo):</strong> Cada vez que guardas un corte, el sistema crea una "foto" (snapshot). Puedes restaurar o eliminar cualquier versión anterior desde la pestaña <strong>🛡 Respaldos</strong> usando los botones de la derecha.</li>
           <li><strong>Capa 4 (Carpeta Local):</strong> Ve a la pestaña <strong>🛡 Respaldos</strong> y haz clic en "📁 Elegir carpeta de respaldo". Selecciona una carpeta en tu OneDrive, Google Drive o Dropbox. La app guardará un archivo `.json` cada vez que cambies algo, y tu nube lo subirá sola.</li>
           <li><strong>Capa 5 (Descarga manual):</strong> Puedes usar el botón "⬇ Descargar JSON ahora" para tener un respaldo físico en tu computadora.</li>
         </ul>
