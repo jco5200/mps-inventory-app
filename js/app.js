@@ -578,7 +578,7 @@ function renderAccounts(app) {
         <th>Base ok</th><th>AG-AS ok</th><th>QA ok</th>
         <th>% Base</th><th>% AG-AS</th><th>% QA</th><th>Global</th><th>Δ</th>
         <th>Fecha</th><th>Meta</th><th>Brecha</th><th>Fase</th><th>Bloqueo</th>
-        <th>Próx. acción</th><th>Resp.</th><th>Fecha comp.</th>
+        <th>Próx. acción</th><th>Responsable</th><th>Fecha comp.</th>
         <th style="min-width:150px">Observaciones / Justificación</th><th>Estado</th>
       </tr></thead>
       <tbody id="accountsBody"></tbody>
