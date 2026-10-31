@@ -43,15 +43,15 @@ main { padding: 24px 28px; max-width: 1600px; margin: 0 auto; }
 @media (max-width: 960px) { .charts-row { grid-template-columns: 1fr; } }
 .chart-container { position: relative; height: 320px; }
 
-/* TABLAS Y AUTO-AJUSTE */
+/* TABLAS */
 .table-wrap { overflow-x: auto; border-radius: var(--radius); border: 1px solid var(--gray-200); -webkit-overflow-scrolling: touch; }
 table { width: 100%; border-collapse: collapse; font-size: 13px; background: #fff; table-layout: auto; }
 th { background: var(--gray-100); text-align: left; padding: 10px 12px; font-weight: 600; color: var(--gray-700); font-size: 11px; text-transform: uppercase; letter-spacing: .4px; border-bottom: 1px solid var(--gray-200); white-space: nowrap; }
-td { padding: 8px 12px; border-bottom: 1px solid var(--gray-100); vertical-align: middle; word-break: break-word; }
+td { padding: 8px 12px; border-bottom: 1px solid var(--gray-100); vertical-align: middle; }
 tr:hover td { background: var(--gray-50); }
 
-/* Inputs adaptables con mínimos para que no se aplasten */
-td input, td select { width: 100%; border: 1px solid transparent; background: transparent; padding: 5px 7px; border-radius: 6px; font-size: 13px; font-family: inherit; color: inherit; min-width: 60px; }
+/* Inputs adaptables */
+td input, td select { width: 100%; border: 1px solid transparent; background: transparent; padding: 5px 7px; border-radius: 6px; font-size: 13px; font-family: inherit; color: inherit; min-width: 50px; }
 td input:hover, td select:hover { background: var(--gray-100); }
 td input:focus, td select:focus { outline: none; background: #fff; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(37,99,235,.1); }
 td input[type=number] { width: 70px; min-width: 70px; }
