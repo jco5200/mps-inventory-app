@@ -145,16 +145,18 @@ td select { min-width: 100px; }
 .snapshot-item:hover { background: var(--gray-50); }
 .snapshot-date { font-weight: 600; }
 .snapshot-meta { color: var(--gray-600); font-size: 12px; }
-.btn-del-snap { background: #fee2e2; color: #991b1b; border: none; border-radius: 6px; padding: 4px 8px; cursor: pointer; font-weight: bold; transition: all .15s; }
-.btn-del-snap:hover { background: #fecaca; }
+
+/* Botón de eliminar respaldo bien visible */
+.btn-del-snap { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; border-radius: 6px; padding: 6px 12px; cursor: pointer; font-weight: 600; font-size: 12px; transition: all .15s; display: flex; align-items: center; gap: 4px; }
+.btn-del-snap:hover { background: #fecaca; color: #7f1d1d; }
 
 /* INSTRUCCIONES */
-.instruction-step { background: #f8fafc; border-left: 4px solid var(--primary); padding: 16px; border-radius: 8px; margin-bottom: 16px; }
-.instruction-step h4 { font-size: 14px; font-weight: 600; margin-bottom: 8px; color: var(--primary); }
-.instruction-step p, .instruction-step ul { font-size: 13px; color: var(--gray-700); margin-bottom: 8px; }
-.instruction-step ul { padding-left: 20px; }
-.instruction-step li { margin-bottom: 4px; }
-.highlight-box { background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; padding: 16px; margin-top: 20px; }
+.instruction-step { background: #f8fafc; border-left: 4px solid var(--primary); padding: 20px; border-radius: 8px; margin-bottom: 20px; }
+.instruction-step h4 { font-size: 16px; font-weight: 600; margin-bottom: 12px; color: var(--primary); }
+.instruction-step p, .instruction-step ul { font-size: 14px; color: var(--gray-700); margin-bottom: 10px; line-height: 1.6; }
+.instruction-step ul { padding-left: 24px; }
+.instruction-step li { margin-bottom: 6px; }
+.highlight-box { background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; padding: 16px; margin-top: 16px; font-size: 13px; color: #1e40af; }
 
 .empty { padding: 40px; text-align: center; color: var(--gray-400); font-size: 13px; }
 .help { font-size: 12px; color: var(--gray-600); margin-top: 8px; }
