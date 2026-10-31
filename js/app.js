@@ -4,6 +4,10 @@
 const STORAGE_KEY = 'mps_inv_2026_v1';
 const WEIGHTS = { base: 0.45, agas: 0.35, qa: 0.20 };
 
+if (typeof Chart !== 'undefined' && typeof ChartDataLabels !== 'undefined') {
+  Chart.register(ChartDataLabels);
+}
+
 const META_THRESHOLDS = [
   { max: '2026-10-30', meta: 0.10 },
   { max: '2026-11-06', meta: 0.55 },
@@ -15,7 +19,7 @@ const META_THRESHOLDS = [
 
 const GANTT_PHASES = [
   { name: 'Preparación',         start: '2026-10-29', end: '2026-10-30', color: '#6b7280' },
-  { name: 'Base A-AF',           start: '2026-11-02', end: '2026-11-06', color: '#3b82f6' },
+  { name: 'Levantamiento A-AF',  start: '2026-11-02', end: '2026-11-06', color: '#3b82f6' },
   { name: 'Investigación AG-AS', start: '2026-11-02', end: '2026-11-20', color: '#8b5cf6' },
   { name: 'QA y correcciones',   start: '2026-11-23', end: '2026-11-27', color: '#f59e0b' },
   { name: 'Cierre ejecutivo',    start: '2026-11-30', end: '2026-11-30', color: '#16a34a' },
@@ -295,15 +299,28 @@ function calcPhase(a) {
 function calcStatus(a) {
   const p = calcGlobal(a);
   if (p >= 1) return 'FINALIZADO';
-  if (!a.total || !a.updateDate) return 'SIN FECHA';
-  if (a.criticalBlock) return 'ROJO';
+  if (!a.total || !a.updateDate) return 'SIN DATOS';
+  if (a.criticalBlock) return 'CRÍTICO';
   const m = calcMeta(state.controlDate);
-  if (p >= m) return 'VERDE';
-  if (p >= m - 0.10) return 'ÁMBAR';
-  return 'ROJO';
+  if (p >= m) return 'AL DÍA';
+  if (p >= m - 0.10) return 'ATRASO MENOR';
+  return 'ATRASO CRÍTICO';
 }
 function statusClass(s) {
-  return { 'FINALIZADO':'badge-finalizado','VERDE':'badge-verde','ÁMBAR':'badge-ambar','ROJO':'badge-rojo','SIN FECHA':'badge-sin-fecha' }[s] || '';
+  const map = { 
+    'FINALIZADO': 'badge-finalizado',
+    'AL DÍA': 'badge-verde', 
+    'ATRASO MENOR': 'badge-ambar', 
+    'ATRASO CRÍTICO': 'badge-rojo', 
+    'CRÍTICO': 'badge-rojo', 
+    'SIN DATOS': 'badge-sin-fecha',
+    // Mapeos por si quedan datos antiguos en localStorage
+    'VERDE': 'badge-verde',
+    'ÁMBAR': 'badge-ambar',
+    'ROJO': 'badge-rojo',
+    'SIN FECHA': 'badge-sin-fecha'
+  };
+  return map[s] || '';
 }
 function fmtPct(v) { if (v==null || isNaN(v)) return '—'; return (v*100).toFixed(1)+'%'; }
 function daysSinceDate(d) { if (!d) return null; return Math.floor((new Date(state.controlDate+'T00:00:00') - new Date(d+'T00:00:00'))/86400000); }
@@ -371,8 +388,10 @@ function renderDashboard(app) {
   const avgProgress = accs.reduce((s,a)=>s+calcGlobal(a),0)/accs.length;
   const totalReviewed = accs.reduce((s,a)=>s+(+a.reviewed||0),0);
   const totalEquip = accs.reduce((s,a)=>s+(+a.total||0),0);
-  const counts = { FINALIZADO:0, VERDE:0, 'ÁMBAR':0, ROJO:0, 'SIN FECHA':0 };
+  
+  const counts = { FINALIZADO:0, 'AL DÍA':0, 'ATRASO MENOR':0, 'ATRASO CRÍTICO':0, 'CRÍTICO':0, 'SIN DATOS':0 };
   accs.forEach(a => counts[calcStatus(a)]++);
+
   const warnings = validateAll();
   const week = getCurrentWeek(state.controlDate);
   const prep = isPreparationPhase(state.controlDate);
@@ -396,8 +415,8 @@ function renderDashboard(app) {
     <div class="kpi-grid">
       <div class="kpi"><div class="kpi-label">Cuentas</div><div class="kpi-value">12</div><div class="kpi-sub">${totalOSAs} OSAs asignados</div></div>
       <div class="kpi success"><div class="kpi-label">Avance promedio</div><div class="kpi-value">${fmtPct(avgProgress)}</div><div class="kpi-sub">Meta ${prep?'—':fmtPct(week.meta)}</div></div>
-      <div class="kpi warning"><div class="kpi-label">En verde</div><div class="kpi-value">${counts.VERDE+counts.FINALIZADO}</div><div class="kpi-sub">${counts['ÁMBAR']} en ámbar</div></div>
-      <div class="kpi danger"><div class="kpi-label">En rojo</div><div class="kpi-value">${counts.ROJO}</div><div class="kpi-sub">${counts['SIN FECHA']} sin datos</div></div>
+      <div class="kpi success"><div class="kpi-label">Al día</div><div class="kpi-value">${counts['AL DÍA']+counts.FINALIZADO}</div><div class="kpi-sub">${counts['ATRASO MENOR']} en atraso menor</div></div>
+      <div class="kpi danger"><div class="kpi-label">Atraso crítico</div><div class="kpi-value">${counts['ATRASO CRÍTICO']+counts['CRÍTICO']}</div><div class="kpi-sub">${counts['SIN DATOS']} sin datos</div></div>
       <div class="kpi"><div class="kpi-label">Equipos revisados</div><div class="kpi-value">${totalReviewed}</div><div class="kpi-sub">de ${totalEquip} totales</div></div>
     </div>
 
@@ -450,15 +469,27 @@ function renderDashboard(app) {
       { label:'Avance', data:accs.map(a=>+(calcGlobal(a)*100).toFixed(1)), backgroundColor:'#2563eb', borderRadius:6 },
       { label:'Meta', data:accs.map(()=>+(calcMeta(state.controlDate)*100).toFixed(1)), backgroundColor:'#94a3b8', borderRadius:6 },
     ]},
-    options:{ responsive:true, maintainAspectRatio:false, scales:{ y:{ beginAtZero:true, max:100, ticks:{ callback:v=>v+'%' } } }, plugins:{ legend:{ position:'bottom' } } }
+    options:{ responsive:true, maintainAspectRatio:false, 
+      scales:{ y:{ beginAtZero:true, max:100, ticks:{ callback:v=>v+'%' } } }, 
+      plugins:{ 
+        legend:{ position:'bottom' },
+        datalabels: { anchor: 'end', align: 'top', formatter: (val) => val > 0 ? val + '%' : '', font: { size: 10, weight: 'bold' }, color: '#374151' }
+      } 
+    }
   });
+
   charts.status = new Chart(document.getElementById('chartStatus'), {
     type:'doughnut',
-    data:{ labels:['Verde','Ámbar','Rojo','Finalizado','Sin datos'], datasets:[{
-      data:[counts.VERDE,counts['ÁMBAR'],counts.ROJO,counts.FINALIZADO,counts['SIN FECHA']],
+    data:{ labels:['Al día','Atraso menor','Atraso crítico','Finalizado','Sin datos'], datasets:[{
+      data:[counts['AL DÍA'],counts['ATRASO MENOR'],counts['ATRASO CRÍTICO']+counts['CRÍTICO'],counts.FINALIZADO,counts['SIN DATOS']],
       backgroundColor:['#16a34a','#f59e0b','#dc2626','#0d9488','#9ca3af'], borderWidth:0,
     }]},
-    options:{ responsive:true, maintainAspectRatio:false, plugins:{ legend:{ position:'bottom' } } }
+    options:{ responsive:true, maintainAspectRatio:false, 
+      plugins:{ 
+        legend:{ position:'bottom' },
+        datalabels: { color: '#fff', font: { size: 12, weight: 'bold' }, formatter: (val) => val > 0 ? val : '' }
+      } 
+    }
   });
 }
 
@@ -468,7 +499,8 @@ function renderPlan(app) {
   const isPrep = isPreparationPhase(state.controlDate);
   const prepDone = state.accounts.filter(a => a.responsible && a.total > 0).length;
   const avg = state.accounts.reduce((s,a)=>s+calcGlobal(a),0)/state.accounts.length;
-  const priority = { ROJO:0, 'ÁMBAR':1, VERDE:2, FINALIZADO:3, 'SIN FECHA':4 };
+  
+  const priority = { 'ATRASO CRÍTICO':0, 'CRÍTICO':0, 'ATRASO MENOR':1, 'AL DÍA':2, 'FINALIZADO':3, 'SIN DATOS':4 };
   const sorted = [...state.accounts].sort((a,b)=>{
     const sa = priority[calcStatus(a)] ?? 5, sb = priority[calcStatus(b)] ?? 5;
     if (sa !== sb) return sa - sb;
@@ -742,30 +774,63 @@ function openReunionModal(accountId) {
   };
 }
 
-/* ---------- GANTT ---------- */
+/* ---------- GANTT TIPO EXCEL ---------- */
 function renderGantt(app) {
+  const dates = [];
+  let curr = new Date('2026-10-29T00:00:00');
+  const end = new Date('2026-11-30T00:00:00');
+  while (curr <= end) {
+    dates.push(curr.toISOString().slice(0,10));
+    curr.setDate(curr.getDate() + 1);
+  }
+
   const today = state.controlDate;
-  const minD = new Date('2026-10-29T00:00:00'), maxD = new Date('2026-11-30T00:00:00');
-  const totalDays = (maxD - minD)/86400000 + 1;
-  const showToday = today >= '2026-10-29' && today <= '2026-11-30';
-  const todayOff = ((new Date(today+'T00:00:00') - minD)/86400000)/totalDays*100;
-  app.innerHTML = `<div class="card">
-    <h2>Gantt de planificación</h2>
-    <div style="margin-top:16px">
-      ${state.accounts.map(a=>{
-        const bars = GANTT_PHASES.map(ph=>{
-          const s = new Date(ph.start+'T00:00:00'), e = new Date(ph.end+'T00:00:00');
-          const left = ((s - minD)/86400000)/totalDays*100;
-          const width = ((e - s)/86400000 + 1)/totalDays*100;
-          return `<div class="gantt-bar" style="left:${left}%;width:${width}%;background:${ph.color}" title="${ph.name}: ${ph.start} → ${ph.end}">${ph.name}</div>`;
-        }).join('');
-        return `<div class="gantt-row"><div class="gantt-label">${a.name}</div><div class="gantt-bars">${bars}${showToday?`<div class="gantt-today" style="left:${todayOff}%"></div>`:''}</div></div>`;
-      }).join('')}
-    </div>
+  
+  let html = `<div class="card">
+    <h2>Gantt de planificación por cuenta</h2>
+    <p class="help">Línea de tiempo comprometida. El avance real se ve en Cuentas o Dashboard.</p>
+    <div class="gantt-container" style="margin-top:16px">
+      <table class="gantt-table">
+        <thead>
+          <tr>
+            <th class="col-left">Cuenta</th>
+            <th>OSAs</th>
+            <th class="col-left">Fase</th>
+            <th>Inicio</th>
+            <th>Fin</th>
+            ${dates.map(d => `<th class="gantt-day-header ${d === today ? 'gantt-today-col' : ''}"><span>${d.slice(5)}</span></th>`).join('')}
+          </tr>
+        </thead>
+        <tbody>`;
+
+  state.accounts.forEach(a => {
+    GANTT_PHASES.forEach((ph, idx) => {
+      const isFirst = idx === 0;
+      html += `<tr>
+        <td class="col-left" style="color:var(--primary);font-weight:600;${isFirst ? 'border-top:2px solid var(--gray-300)' : ''}">${isFirst ? a.name : ''}</td>
+        <td style="${isFirst ? 'border-top:2px solid var(--gray-300)' : ''}">${isFirst ? a.osas : ''}</td>
+        <td class="col-left" style="color:${ph.color};font-weight:600;${isFirst ? 'border-top:2px solid var(--gray-300)' : ''}">${ph.name}</td>
+        <td style="${isFirst ? 'border-top:2px solid var(--gray-300)' : ''}">${ph.start.slice(5)}</td>
+        <td style="${isFirst ? 'border-top:2px solid var(--gray-300)' : ''}">${ph.end.slice(5)}</td>
+        ${dates.map(d => {
+          const isActive = d >= ph.start && d <= ph.end;
+          const isTodayCol = d === today ? 'gantt-today-col' : '';
+          const borderTop = isFirst ? 'border-top:2px solid var(--gray-300);' : '';
+          return `<td class="${isTodayCol}" style="padding:0; ${borderTop}">
+            ${isActive ? `<div class="gantt-active-cell" style="background:${ph.color}; width:100%; height:24px;"></div>` : ''}
+          </td>`;
+        }).join('')}
+      </tr>`;
+    });
+  });
+
+  html += `</tbody></table></div>
     <div style="margin-top:16px;display:flex;gap:16px;flex-wrap:wrap;font-size:12px">
       ${GANTT_PHASES.map(ph=>`<span style="display:flex;align-items:center;gap:6px"><span style="display:inline-block;width:14px;height:14px;border-radius:3px;background:${ph.color}"></span>${ph.name}</span>`).join('')}
     </div>
   </div>`;
+
+  app.innerHTML = html;
 }
 
 /* ---------- RIESGOS ---------- */
@@ -1029,7 +1094,8 @@ async function exportToExcel() {
   const avgProgress = accs.reduce((s,a)=>s+calcGlobal(a),0)/accs.length;
   const totalReviewed = accs.reduce((s,a)=>s+(+a.reviewed||0),0);
   const totalEquip = accs.reduce((s,a)=>s+(+a.total||0),0);
-  const counts = { FINALIZADO:0, VERDE:0, 'ÁMBAR':0, ROJO:0, 'SIN FECHA':0 };
+  
+  const counts = { FINALIZADO:0, 'AL DÍA':0, 'ATRASO MENOR':0, 'ATRASO CRÍTICO':0, 'CRÍTICO':0, 'SIN DATOS':0 };
   accs.forEach(a=>counts[calcStatus(a)]++);
 
   const wb = new ExcelJS.Workbook();
@@ -1054,8 +1120,8 @@ async function exportToExcel() {
   const kpis = [
     {label:'Cuentas',value:12,color:'FF2563EB'},{label:'OSAs',value:totalOSAs,color:'FF2563EB'},
     {label:'Avance promedio',value:avgProgress,color:'FF16A34A',pct:true},{label:'Equipos revisados',value:`${totalReviewed}/${totalEquip}`,color:'FF2563EB'},
-    {label:'Verde',value:counts.VERDE+counts.FINALIZADO,color:'FF16A34A'},{label:'Ámbar',value:counts['ÁMBAR'],color:'FFF59E0B'},
-    {label:'Rojo',value:counts.ROJO,color:'FFDC2626'},{label:'Finalizados',value:counts.FINALIZADO,color:'FF0D9488'},
+    {label:'Al día',value:counts['AL DÍA']+counts.FINALIZADO,color:'FF16A34A'},{label:'Atraso menor',value:counts['ATRASO MENOR'],color:'FFF59E0B'},
+    {label:'Atraso crítico',value:counts['ATRASO CRÍTICO']+counts['CRÍTICO'],color:'FFDC2626'},{label:'Finalizados',value:counts.FINALIZADO,color:'FF0D9488'},
   ];
   kpis.forEach((k,i)=>{
     const col = i<4?2:6, row = i<4?5+i:5+(i-4);
@@ -1072,13 +1138,13 @@ async function exportToExcel() {
       { label:'Avance', data:accs.map(a=>+(calcGlobal(a)*100).toFixed(1)), backgroundColor:'#2563eb', borderRadius:6 },
       { label:'Meta', data:accs.map(()=>+(calcMeta(state.controlDate)*100).toFixed(1)), backgroundColor:'#94a3b8', borderRadius:6 },
     ]},
-    options:{ responsive:false, animation:false, plugins:{ title:{display:true,text:'Avance vs Meta por cuenta',font:{size:16,weight:'bold'}}, legend:{position:'bottom'} }, scales:{ y:{ beginAtZero:true, max:100, ticks:{callback:v=>v+'%'} } } },
+    options:{ responsive:false, animation:false, plugins:{ title:{display:true,text:'Avance vs Meta por cuenta',font:{size:16,weight:'bold'}}, legend:{position:'bottom'}, datalabels:{display:false} }, scales:{ y:{ beginAtZero:true, max:100, ticks:{callback:v=>v+'%'} } } },
   });
 
   const doughnutImg = generateChartImage({
     type:'doughnut',
-    data:{ labels:['Verde','Ámbar','Rojo','Finalizado','Sin datos'], datasets:[{ data:[counts.VERDE,counts['ÁMBAR'],counts.ROJO,counts.FINALIZADO,counts['SIN FECHA']], backgroundColor:['#16a34a','#f59e0b','#dc2626','#0d9488','#9ca3af'] }]},
-    options:{ responsive:false, animation:false, plugins:{ title:{display:true,text:'Distribución de estados',font:{size:16,weight:'bold'}}, legend:{position:'bottom'} } },
+    data:{ labels:['Al día','Atraso menor','Atraso crítico','Finalizado','Sin datos'], datasets:[{ data:[counts['AL DÍA'],counts['ATRASO MENOR'],counts['ATRASO CRÍTICO']+counts['CRÍTICO'],counts.FINALIZADO,counts['SIN DATOS']], backgroundColor:['#16a34a','#f59e0b','#dc2626','#0d9488','#9ca3af'] }]},
+    options:{ responsive:false, animation:false, plugins:{ title:{display:true,text:'Distribución de estados',font:{size:16,weight:'bold'}}, legend:{position:'bottom'}, datalabels:{display:false} } },
   });
 
   ws.addImage(wb.addImage({base64:barImg,extension:'png'}), { tl:{col:1,row:13}, ext:{width:720,height:360} });
@@ -1102,7 +1168,7 @@ async function exportToExcel() {
     ws.getCell(r,5).font = { color:{argb: gap<0?'FFDC2626':'FF16A34A'}, bold:true };
     ws.getCell(r,6).value = calcPhase(a);
     ws.getCell(r,7).value = st;
-    const cmap = { VERDE:'FFD1FAE5','ÁMBAR':'FFFEF3C7',ROJO:'FFFEE2E2',FINALIZADO:'FFCCFBF1','SIN FECHA':'FFF3F4F6' };
+    const cmap = { 'AL DÍA':'FFD1FAE5','ATRASO MENOR':'FFFEF3C7','ATRASO CRÍTICO':'FFFEE2E2','CRÍTICO':'FFFEE2E2',FINALIZADO:'FFCCFBF1','SIN DATOS':'FFF3F4F6' };
     ws.getCell(r,7).fill = { type:'pattern', pattern:'solid', fgColor:{argb:cmap[st]||'FFFFFFFF'} };
     ws.getCell(r,7).font = { bold:true };
     ws.getCell(r,7).alignment = { horizontal:'center' };
@@ -1132,7 +1198,7 @@ async function exportToExcel() {
   wsA.eachRow((row,r)=>{
     if (r===1) return;
     const s = row.getCell(18);
-    const cmap = { VERDE:'FFD1FAE5','ÁMBAR':'FFFEF3C7',ROJO:'FFFEE2E2',FINALIZADO:'FFCCFBF1','SIN FECHA':'FFF3F4F6' };
+    const cmap = { 'AL DÍA':'FFD1FAE5','ATRASO MENOR':'FFFEF3C7','ATRASO CRÍTICO':'FFFEE2E2','CRÍTICO':'FFFEE2E2',FINALIZADO:'FFCCFBF1','SIN DATOS':'FFF3F4F6' };
     if (cmap[s.value]) { s.fill = { type:'pattern', pattern:'solid', fgColor:{argb:cmap[s.value]} }; s.font = { bold:true }; }
     row.height = 22;
   });
