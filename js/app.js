@@ -359,7 +359,6 @@ function getLastSnapshotByAccount() {
   });
   return m;
 }
-// Función auxiliar para verificar si es fin de semana
 function isWeekend(dateStr) {
   const day = new Date(dateStr + 'T00:00:00').getDay();
   return day === 0 || day === 6; // 0 = Domingo, 6 = Sábado
@@ -695,7 +694,6 @@ async function openImportModal(file) {
       if (okAgas && !hasEmpty) agasOk++; else if (hasEmpty && agasUnjustified.length<5) agasUnjustified.push(sStr);
     }
 
-    // Auto-detectar cuenta por nombre de archivo
     let matchedId = '';
     const fname = file.name.toLowerCase();
     for (const a of state.accounts) {
@@ -1438,4 +1436,100 @@ async function exportToExcel() {
   // Formatear celdas de Resumen
   accs.forEach((a, i) => {
     const r = 70 + i;
-    ws.getCell(r, 2).numFmt = '0.0%
+    ws.getCell(r, 2).numFmt = '0.0%'; // Avance
+    ws.getCell(r, 3).numFmt = '0.0%'; // Meta
+    ws.getCell(r, 4).numFmt = '+0.0%;-0.0%;0.0%'; // Brecha
+    const gapCell = ws.getCell(r, 4);
+    gapCell.font = { bold:true, color:{argb: calcGap(a) < 0 ? 'FFDC2626' : 'FF16A34A'} };
+    
+    const st = calcStatus(a);
+    const stCell = ws.getCell(r, 6);
+    const cmap = { 'AL DÍA':'FFD1FAE5','ATRASO MENOR':'FFFEF3C7','ATRASO CRÍTICO':'FFFEE2E2','CRÍTICO':'FFFEE2E2',FINALIZADO:'FFCCFBF1','SIN DATOS':'FFF3F4F6' };
+    stCell.fill = { type:'pattern', pattern:'solid', fgColor:{argb:cmap[st]||'FFFFFFFF'} };
+    stCell.font = { bold:true, size:9, color:{argb: st==='ATRASO CRÍTICO'||st==='CRÍTICO'?'FF991B1B': (st==='AL DÍA'||st==='FINALIZADO'?'FF065F46':'FF92400E')} };
+  });
+
+  /* HOJA 2: ACTUALIZAR AVANCE */
+  const wsA = wb.addWorksheet('Actualizar Avance', { properties:{ tabColor:{argb:'FF16A34A'} } });
+  wsA.columns = [
+    {header:'Cuenta',key:'name',width:20},{header:'OSAs',key:'osas',width:8},{header:'Responsable',key:'responsible',width:22},
+    {header:'Total',key:'total',width:10},{header:'Revisados',key:'reviewed',width:12},{header:'Base ok',key:'baseCount',width:10},
+    {header:'AG-AS ok',key:'agasCount',width:10},{header:'QA ok',key:'qaCount',width:10},
+    {header:'% Base',key:'pctBase',width:10},{header:'% AG-AS',key:'pctAGAS',width:10},{header:'% QA',key:'pctQA',width:10},
+    {header:'Global',key:'global',width:10},{header:'Fecha',key:'updateDate',width:14},{header:'Meta',key:'meta',width:10},
+    {header:'Brecha',key:'gap',width:12},{header:'Fase',key:'phase',width:22},{header:'Bloqueo',key:'block',width:10},{header:'Estado',key:'status',width:14},
+  ];
+  accs.forEach(a=>wsA.addRow({
+    name:a.name, osas:a.osas, responsible:a.responsible, total:a.total, reviewed:a.reviewed,
+    baseCount:a.baseCount, agasCount:a.agasCount, qaCount:a.qaCount,
+    pctBase:pctBase(a), pctAGAS:pctAGAS(a), pctQA:pctQA(a), global:calcGlobal(a), updateDate:a.updateDate,
+    meta:calcMeta(state.controlDate), gap:calcGap(a), phase:calcPhase(a), block:a.criticalBlock?'Sí':'No', status:calcStatus(a),
+  }));
+  
+  const hA = wsA.getRow(1);
+  hA.font = { bold:true, color:{argb:'FFFFFFFF'} };
+  hA.fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FF1E40AF'} };
+  hA.height = 30;
+  [9,10,11,12,14].forEach(c=>wsA.getColumn(c).numFmt = '0.0%');
+  wsA.getColumn(15).numFmt = '+0.0%;-0.0%;0.0%';
+  
+  wsA.eachRow((row,r)=>{
+    if (r===1) return;
+    const s = row.getCell(18);
+    const cmap = { 'AL DÍA':'FFD1FAE5','ATRASO MENOR':'FFFEF3C7','ATRASO CRÍTICO':'FFFEE2E2','CRÍTICO':'FFFEE2E2',FINALIZADO:'FFCCFBF1','SIN DATOS':'FFF3F4F6' };
+    if (cmap[s.value]) { s.fill = { type:'pattern', pattern:'solid', fgColor:{argb:cmap[s.value]} }; s.font = { bold:true }; }
+    s.alignment = { horizontal:'center' };
+    row.height = 22;
+    
+    row.eachCell(cell => {
+      if (r % 2 === 0) cell.fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FFF9FAFB'} };
+      cell.border = { top:{style:'thin', color:{argb:'FFE5E7EB'}}, left:{style:'thin', color:{argb:'FFE5E7EB'}}, bottom:{style:'thin', color:{argb:'FFE5E7EB'}}, right:{style:'thin', color:{argb:'FFE5E7EB'}} };
+    });
+  });
+  wsA.views = [{ state:'frozen', ySplit:1 }];
+  wsA.autoFilter = { from:'A1', to:'R1' };
+
+  /* HOJA 3: ACUERDOS Y RIESGOS */
+  if (state.risks.length) {
+    const wsR = wb.addWorksheet('Acuerdos y Riesgos', { properties:{ tabColor:{argb:'FFDC2626'} } });
+    wsR.columns = [
+      {header:'ID',key:'id',width:8},{header:'Fecha',key:'meetingDate',width:14},{header:'Cuenta',key:'account',width:18},
+      {header:'Categoría',key:'category',width:14},{header:'Detalle',key:'detail',width:40},{header:'Impacto',key:'impact',width:10},
+      {header:'Responsable',key:'responsible',width:20},{header:'Compromiso',key:'commitmentDate',width:14},
+      {header:'Estado',key:'status',width:12},{header:'Días',key:'days',width:10},{header:'Semáforo',key:'sem',width:12},{header:'Cierre',key:'closure',width:30},
+    ];
+    state.risks.forEach(r=>wsR.addRow({
+      id:r.id, meetingDate:r.meetingDate, account:r.account, category:r.category, detail:r.detail,
+      impact:r.impact, responsible:r.responsible, commitmentDate:r.commitmentDate, status:r.status,
+      days:calcRiskDays(r), sem:calcRiskSemaphore(r), closure:r.closure,
+    }));
+    const hR = wsR.getRow(1);
+    hR.font = { bold:true, color:{argb:'FFFFFFFF'} };
+    hR.fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FF1E40AF'} };
+    hR.height = 30;
+    
+    wsR.eachRow((row,r)=>{
+      if (r===1) return;
+      row.height = 22;
+      row.eachCell(cell => {
+        if (r % 2 === 0) cell.fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FFF9FAFB'} };
+        cell.border = { top:{style:'thin', color:{argb:'FFE5E7EB'}}, left:{style:'thin', color:{argb:'FFE5E7EB'}}, bottom:{style:'thin', color:{argb:'FFE5E7EB'}}, right:{style:'thin', color:{argb:'FFE5E7EB'}} };
+      });
+    });
+    wsR.views = [{ state:'frozen', ySplit:1 }];
+  }
+
+  /* HOJA 4: HISTORIAL */
+  if (state.history.length) {
+    const wsH = wb.addWorksheet('Historial', { properties:{ tabColor:{argb:'FFF59E0B'} } });
+    wsH.columns = [
+      {header:'Fecha',key:'date',width:14},{header:'Cuenta',key:'account',width:20},{header:'OSAs',key:'osas',width:8},
+      {header:'Total',key:'total',width:10},{header:'Revisados',key:'reviewed',width:12},{header:'Base ok',key:'baseCount',width:10},
+      {header:'AG-AS ok',key:'agasCount',width:10},{header:'QA ok',key:'qaCount',width:10},
+      {header:'% Base',key:'pctBase',width:10},{header:'% AG-AS',key:'pctAGAS',width:10},{header:'% QA',key:'pctQA',width:10},
+      {header:'Global',key:'global',width:10},{header:'Estado',key:'status',width:14},{header:'Comentario',key:'comment',width:40},
+    ];
+    state.history.forEach(h=>wsH.addRow(h));
+    const hH = wsH.getRow(1);
+    hH.font = { bold:true, color:{argb:'FFFFFFFF'} };
+    hH.fill = { type:'pattern', pattern:'solid',
