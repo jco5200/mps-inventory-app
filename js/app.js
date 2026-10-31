@@ -4,6 +4,7 @@
 const STORAGE_KEY = 'mps_inv_2026_v1';
 const WEIGHTS = { base: 0.45, agas: 0.35, qa: 0.20 };
 
+// Registrar el plugin de etiquetas de datos
 if (typeof Chart !== 'undefined' && typeof ChartDataLabels !== 'undefined') {
   Chart.register(ChartDataLabels);
 }
@@ -313,12 +314,7 @@ function statusClass(s) {
     'ATRASO MENOR': 'badge-ambar', 
     'ATRASO CRÍTICO': 'badge-rojo', 
     'CRÍTICO': 'badge-rojo', 
-    'SIN DATOS': 'badge-sin-fecha',
-    // Mapeos por si quedan datos antiguos en localStorage
-    'VERDE': 'badge-verde',
-    'ÁMBAR': 'badge-ambar',
-    'ROJO': 'badge-rojo',
-    'SIN FECHA': 'badge-sin-fecha'
+    'SIN DATOS': 'badge-sin-fecha'
   };
   return map[s] || '';
 }
@@ -463,6 +459,7 @@ function renderDashboard(app) {
     </div>
   `;
 
+  // GRÁFICO DE BARRAS CON ETIQUETAS
   charts.progress = new Chart(document.getElementById('chartProgress'), {
     type:'bar',
     data:{ labels:accs.map(a=>a.name), datasets:[
@@ -478,6 +475,7 @@ function renderDashboard(app) {
     }
   });
 
+  // GRÁFICO DE TORTA CON ETIQUETAS
   charts.status = new Chart(document.getElementById('chartStatus'), {
     type:'doughnut',
     data:{ labels:['Al día','Atraso menor','Atraso crítico','Finalizado','Sin datos'], datasets:[{
@@ -776,6 +774,7 @@ function openReunionModal(accountId) {
 
 /* ---------- GANTT TIPO EXCEL ---------- */
 function renderGantt(app) {
+  // Generar días desde el 29 de octubre al 30 de noviembre
   const dates = [];
   let curr = new Date('2026-10-29T00:00:00');
   const end = new Date('2026-11-30T00:00:00');
