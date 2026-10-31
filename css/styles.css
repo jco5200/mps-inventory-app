@@ -126,15 +126,7 @@ td select { min-width: 100px; }
 .gantt-active-cell { border-radius: 2px; }
 .gantt-day-header { min-width: 35px; max-width: 35px; padding: 0 !important; vertical-align: middle; }
 .gantt-day-header span { display: block; transform: rotate(-90deg); font-size: 10px; padding: 10px 0; letter-spacing: 0.5px; }
-
-/* Fin de semana */
-.weekend-col { background-color: #fef2f2 !important; }
-th.weekend-col { background-color: #334155 !important; color: #fca5a5 !important; } /* Azul más oscuro en el header */
-
-/* Día de hoy */
-.gantt-today-col { border-left: 2px solid #dc2626 !important; border-right: 2px solid #dc2626 !important; }
-td.gantt-today-col { background-color: #fee2e2 !important; }
-th.gantt-today-col { background-color: #dc2626 !important; color: white !important; font-weight: bold; } /* Rojo intenso en el header */
+.gantt-today-col { border-left: 2px solid #dc2626 !important; border-right: 2px solid #dc2626 !important; background: #fee2e2 !important; }
 
 /* RESPALDOS */
 .backup-hero { background: linear-gradient(135deg, #1e40af, #7c3aed); color: #fff; padding: 24px; border-radius: var(--radius); margin-bottom: 20px; }
@@ -154,7 +146,7 @@ th.gantt-today-col { background-color: #dc2626 !important; color: white !importa
 .snapshot-date { font-weight: 600; }
 .snapshot-meta { color: var(--gray-600); font-size: 12px; }
 
-/* Botón de eliminar respaldo */
+/* Botón de eliminar respaldo bien visible */
 .btn-del-snap { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; border-radius: 6px; padding: 6px 12px; cursor: pointer; font-weight: 600; font-size: 12px; transition: all .15s; display: flex; align-items: center; gap: 4px; }
 .btn-del-snap:hover { background: #fecaca; color: #7f1d1d; }
 
