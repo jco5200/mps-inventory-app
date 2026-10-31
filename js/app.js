@@ -1069,55 +1069,70 @@ async function renderBackups(app) {
 function renderInstructions(app) {
   app.innerHTML = `
     <div class="card">
-      <h2>📖 Guía de Uso e Instrucciones</h2>
-      <p class="help" style="margin-bottom:20px">Esta guía te explica paso a paso cómo usar la aplicación, ya sea que tengas la información a mano o que necesites importar los archivos Excel de los OSAs.</p>
+      <h2>📖 Guía del Sistema · Control Proyecto Inventarios MPS 2026</h2>
+      <p class="help" style="margin-bottom:20px">Esta guía detalla el objetivo del proyecto, la función de cada pestaña y el procedimiento paso a paso para que cualquier persona pueda operar la aplicación sin depender de un experto.</p>
       
-      <div class="instruction-step">
-        <h4>1. Carga Manual de Datos (Registro por Registro)</h4>
-        <p>Este método se usa cuando estás en una reunión con el OSA y él te dicta los números, o cuando prefieres ingresar los datos directamente.</p>
-        <ul>
-          <li>Ve a la pestaña <strong>Inventario Cuentas</strong> o <strong>Plan Semanal</strong>.</li>
-          <li>Si estás en Plan Semanal, haz clic en <strong>"Iniciar reunión →"</strong> en la cuenta que vas a revisar. Se abrirá una ventana.</li>
-          <li>Si estás en Inventario Cuentas, puedes editar directamente en la tabla.</li>
-          <li>En la tabla o ventana, ingresa las cantidades exactas:
-            <ul>
-              <li><strong>Total equipos:</strong> El universo total de la cuenta.</li>
-              <li><strong>Revisados:</strong> Cuántos equipos ha inspeccionado el OSA en total.</li>
-              <li><strong>Base A-AF ok:</strong> Cuántos de los revisados ya tienen las primeras 32 columnas completas.</li>
-              <li><strong>AG-AS ok:</strong> Cuántos tienen las 13 columnas avanzadas completas.</li>
-              <li><strong>QA ok:</strong> Cuántos han pasado validación de calidad.</li>
-            </ul>
-          </li>
-          <li>Si hay un bloqueo, márcalo y describe la próxima acción, responsable y fecha de compromiso.</li>
-          <li>Si tienes alguna justificación o comentario adicional, escríbela en la columna <strong>Observaciones / Justificación</strong>.</li>
-          <li>Haz clic en <strong>"Guardar corte"</strong> para que el sistema calcule los porcentajes, actualice el semáforo y guarde una foto en el historial.</li>
-        </ul>
+      <div class="instruction-step" style="border-left-color: #2563eb;">
+        <h4>Objetivo del Proyecto</h4>
+        <p>Este sistema controla la implementación del nuevo formato de inventario en las 12 cuentas del área MPS (Servicio de Impresión Gestionado). Cada OSA (Operador de Servicio) completa su archivo individual de inventario. El supervisor (tú) actualiza este control en las reuniones de seguimiento, registra bloqueos y presenta el avance al mandante.</p>
+        <p><strong>Cierre comprometido:</strong> 30-11-2026.</p>
       </div>
 
       <div class="instruction-step">
-        <h4>2. Carga Automática desde Excel del OSA</h4>
-        <p>Si el OSA te envía su archivo de inventario (el que tiene las 45 columnas de la A a la AS), la app puede leerlo y contar automáticamente.</p>
+        <h4>¿Qué hace cada parte del sitio?</h4>
         <ul>
-          <li>Ve a la pestaña <strong>Inventario Cuentas</strong>.</li>
-          <li>Haz clic en el botón azul <strong>"📂 Importar Excel de OSA"</strong> (arriba a la derecha).</li>
-          <li>Selecciona el archivo `.xlsx` o `.xls` que te envió el OSA.</li>
-          <li>La app procesará el archivo y te mostrará un resumen: cuántos equipos encontró, cuántos tienen la Base completa y cuántos tienen AG-AS.</li>
-          <li>En la parte inferior del resumen, elige a qué cuenta pertenece ese archivo (ej: FASA).</li>
-          <li>Haz clic en <strong>"Aplicar"</strong> y todos los datos se cargarán de golpe.</li>
+          <li><strong>Dashboard:</strong> Vista ejecutiva. Muestra los KPIs (tarjetas), gráficos de avance vs meta, distribución de estados y los hitos del proyecto. No se edita manualmente; se alimenta de las demás pestañas.</li>
+          <li><strong>Plan Semanal:</strong> Te indica en qué semana del cronograma estás, cuál es el foco actual (ej: Levantamiento A-AF) y te muestra las reuniones prioritarias ordenadas por criticidad (las rojas primero).</li>
+          <li><strong>Inventario Cuentas:</strong> Es la hoja principal de carga. Aquí ingresas los datos de cada cuenta (Total equipos, Revisados, Base A-AF, AG-AS y QA), registras bloqueos y observaciones.</li>
+          <li><strong>Gantt:</strong> Muestra la línea de tiempo comprometida para cada cuenta y fase, con vista de días para ver la evolución temporal.</li>
+          <li><strong>Acuerdos y Riesgos:</strong> Registro formal de bloqueos, decisiones y compromisos. Cada registro tiene un responsable y una fecha de vencimiento con semáforo automático.</li>
+          <li><strong>Historial:</strong> Conserva una "foto" (snapshot) del avance de cada cuenta en cada reunión. Permite reconstruir la evolución semanal.</li>
+          <li><strong>Cronograma:</strong> Pauta detallada de las actividades esperadas por semana, entregables, evidencias y riesgos a controlar.</li>
+          <li><strong>Respaldos:</strong> Sistema de 5 capas de seguridad (LocalStorage, IndexedDB, Snapshots, Carpeta Local y Descarga JSON) para no perder nunca la información.</li>
+          <li><strong>Configuración:</strong> Ajustes de la fecha de control, exportación de datos y reinicio del sistema.</li>
         </ul>
-        <div class="highlight-box">
-          <strong>Nota importante:</strong> El sistema cuenta como "completo" cualquier celda que tenga un valor, incluyendo textos como "No Aplica" o "N/A". Si la celda está totalmente vacía, se considera pendiente.
-        </div>
+      </div>
+
+      <div class="instruction-step" style="border-left-color: #16a34a;">
+        <h4>Reglas del Semáforo (Estados)</h4>
+        <p>El estado se calcula automáticamente según el avance global vs la meta a la fecha:</p>
+        <ul>
+          <li><span class="badge badge-verde">AL DÍA</span> Cumple o supera la meta correspondiente a la fecha de control.</li>
+          <li><span class="badge badge-ambar">ATRASO MENOR</span> Está hasta 10 puntos porcentuales por debajo de la meta.</li>
+          <li><span class="badge badge-rojo">ATRASO CRÍTICO</span> Está a más de 10 puntos por debajo de la meta o posee un bloqueo crítico.</li>
+          <li><span class="badge badge-finalizado">FINALIZADO</span> El avance global ha llegado al 100%.</li>
+          <li><span class="badge badge-sin-fecha">SIN DATOS</span> No hay información cargada para esa cuenta.</li>
+        </ul>
+        <p><em>El avance global se calcula con la ponderación: 45% Base A-AF + 35% AG-AS + 20% QA.</em></p>
       </div>
 
       <div class="instruction-step">
-        <h4>3. Sistema de Respaldos (5 Capas)</h4>
-        <p>Nunca perderás tu avance. La aplicación guarda copias de seguridad automáticamente en tu navegador y en una carpeta local.</p>
+        <h4>Cómo actualizar el libro en menos de 5 minutos</h4>
+        <p><strong>Opción A: Registro Manual (Reunión con el OSA)</strong></p>
+        <ol style="padding-left: 24px; font-size: 14px; color: var(--gray-700); margin-bottom: 16px;">
+          <li>Ve a <strong>Plan Semanal</strong> y haz clic en <strong>"Iniciar reunión →"</strong> en la cuenta que vas a revisar.</li>
+          <li>En la ventana, ingresa las cantidades exactas dictadas por el OSA (Total, Revisados, Base, AG-AS, QA).</li>
+          <li>Si hay un bloqueo, márcalo y describe la próxima acción, responsable y fecha compromiso.</li>
+          <li>Haz clic en <strong>"Guardar corte de esta cuenta"</strong>. Los porcentajes y el semáforo se calculan solos.</li>
+        </ol>
+        <p><strong>Opción B: Carga desde Excel del OSA</strong></p>
+        <ol style="padding-left: 24px; font-size: 14px; color: var(--gray-700);">
+          <li>Ve a <strong>Inventario Cuentas</strong> y haz clic en <strong>"📂 Importar Excel de OSA"</strong>.</li>
+          <li>Selecciona el archivo del OSA. El sistema contará automáticamente cuántos equipos tienen la Base (32 columnas) y AG-AS (13 columnas) completas.</li>
+          <li>Elige a qué cuenta pertenece el archivo y haz clic en Aplicar.</li>
+        </ol>
+      </div>
+
+      <div class="instruction-step" style="border-left-color: #f59e0b;">
+        <h4>Controles antes de presentar al mandante</h4>
+        <p>Antes de guardar el corte semanal y exportar a Excel, asegúrate de:</p>
         <ul>
-          <li><strong>Capa 1 y 2:</strong> Se guarda automáticamente en tu navegador al hacer cualquier cambio.</li>
-          <li><strong>Capa 3 (Máquina del tiempo):</strong> Cada vez que guardas un corte, el sistema crea una "foto" (snapshot). Puedes restaurar o eliminar cualquier versión anterior desde la pestaña <strong>🛡 Respaldos</strong> usando los botones de la derecha.</li>
-          <li><strong>Capa 4 (Carpeta Local):</strong> Ve a la pestaña <strong>🛡 Respaldos</strong> y haz clic en "📁 Elegir carpeta de respaldo". Selecciona una carpeta en tu OneDrive, Google Drive o Dropbox. La app guardará un archivo `.json` cada vez que cambies algo, y tu nube lo subirá sola.</li>
-          <li><strong>Capa 5 (Descarga manual):</strong> Puedes usar el botón "⬇ Descargar JSON ahora" para tener un respaldo físico en tu computadora.</li>
+          <li>✓ Confirmar que todas las cuentas tengan la fecha de último reporte actualizada.</li>
+          <li>✓ Validar que "Equipos revisados" no supere el "Total equipos".</li>
+          <li>✓ Revisar que no haya celdas rojas sin justificación en las observaciones.</li>
+          <li>✓ Verificar que cada bloqueo tenga próxima acción, responsable y fecha compromiso.</li>
+          <li>✓ Usar la Gantt como planificación y el Dashboard/Inventario Cuentas como evidencia del avance real.</li>
+          <li>✓ Guardar el corte en Historial y descargar el Excel para enviar por correo.</li>
         </ul>
       </div>
     </div>
