@@ -1214,13 +1214,13 @@ function renderSettings(app) {
   });
 }
 
-/* ========== EXPORTAR EXCEL ========== */
+/* ========== EXPORTAR EXCEL (DISEÑO EJECUTIVO) ========== */
 function generateChartImage(config) {
   if (typeof Chart === 'undefined') return null;
   const c = document.createElement('canvas');
   c.width = 900; c.height = 450;
   const ctx = c.getContext('2d');
-  ctx.fillStyle = '#fff'; ctx.fillRect(0,0,c.width,c.height);
+  ctx.fillStyle = '#ffffff'; ctx.fillRect(0,0,c.width,c.height);
   const chart = new Chart(c, config);
   const url = c.toDataURL('image/png', 1.0);
   chart.destroy();
@@ -1229,13 +1229,12 @@ function generateChartImage(config) {
 
 async function exportToExcel() {
   if (typeof ExcelJS === 'undefined') { toast('ExcelJS no cargado'); return; }
-  toast('Generando Excel con gráficos...');
+  toast('Generando Excel Ejecutivo Dinámico...');
+  
   const accs = state.accounts;
   const totalOSAs = accs.reduce((s,a)=>s+(+a.osas||0),0);
   const avgProgress = accs.reduce((s,a)=>s+calcGlobal(a),0)/accs.length;
-  const totalReviewed = accs.reduce((s,a)=>s+(+a.reviewed||0),0);
-  const totalEquip = accs.reduce((s,a)=>s+(+a.total||0),0);
-
+  
   const counts = { FINALIZADO:0, 'AL DÍA':0, 'ATRASO MENOR':0, 'ATRASO CRÍTICO':0, 'CRÍTICO':0, 'SIN DATOS':0 };
   accs.forEach(a=>counts[calcStatus(a)]++);
 
@@ -1243,166 +1242,258 @@ async function exportToExcel() {
   wb.creator = 'Control Proyecto Inventarios MPS 2026';
   wb.created = new Date();
 
-  /* HOJA 1: DASHBOARD */
-  const ws = wb.addWorksheet('Dashboard', { views:[{showGridLines:false}], properties:{ tabColor:{argb:'FF2563EB'} } });
-  ws.columns = [{width:12},{width:12},{width:12},{width:12},{width:12},{width:12},{width:12},{width:12},{width:12},{width:12},{width:2},{width:12},{width:12},{width:12},{width:12},{width:12}];
+  const colorPrimary = 'FF1E3A8A'; // Azul oscuro ejecutivo
+  const colorLight = 'FFF8FAFC';   // Gris muy claro
+  const colorBorder = 'FFE2E8F0';  // Gris borde
+
+  const styleHeader = {
+    font: { bold: true, color: { argb: 'FFFFFFFF' }, size: 11 },
+    fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: colorPrimary } },
+    alignment: { vertical: 'middle', horizontal: 'center' },
+    border: { top: { style: 'thin', color: { argb: colorPrimary } }, bottom: { style: 'thin', color: { argb: colorPrimary } } }
+  };
+  
+  const styleBorder = {
+    top: { style: 'thin', color: { argb: colorBorder } },
+    left: { style: 'thin', color: { argb: colorBorder } },
+    bottom: { style: 'thin', color: { argb: colorBorder } },
+    right: { style: 'thin', color: { argb: colorBorder } }
+  };
+
+  /* ==================== HOJA 1: DASHBOARD EJECUTIVO ==================== */
+  const ws = wb.addWorksheet('Dashboard', { views:[{showGridLines:false}], properties:{ tabColor:{argb: colorPrimary} } });
+  ws.columns = [{width:14},{width:14},{width:14},{width:14},{width:14},{width:14},{width:14},{width:14},{width:14},{width:14}];
 
   ws.mergeCells('A1:J2');
   const t = ws.getCell('A1');
   t.value = 'DASHBOARD EJECUTIVO · CONTROL INVENTARIOS MPS 2026';
-  t.font = { bold:true, size:16, color:{argb:'FFFFFFFF'} };
-  t.fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FF2563EB'} };
+  t.font = { bold:true, size:18, color:{argb:'FFFFFFFF'} };
+  t.fill = { type:'pattern', pattern:'solid', fgColor:{argb: colorPrimary} };
   t.alignment = { horizontal:'center', vertical:'middle' };
-  ws.getRow(1).height = 30; ws.getRow(2).height = 30;
+  ws.getRow(1).height = 35; ws.getRow(2).height = 35;
 
   ws.mergeCells('A3:J3');
   ws.getCell('A3').value = `Cierre: 30-11-2026 · Generado: ${new Date().toLocaleString('es-CL')} · Fecha control: ${state.controlDate}`;
-  ws.getCell('A3').font = { italic:true, size:10, color:{argb:'FF6B7280'} };
-  ws.getCell('A3').alignment = { horizontal:'center' };
-  ws.getRow(3).height = 20;
+  ws.getCell('A3').font = { italic:true, size:10, color:{argb:'FF64748B'} };
+  ws.getCell('A3').alignment = { horizontal:'center', vertical:'middle' };
+  ws.getRow(3).height = 25;
 
   const kpis = [
-    {label:'Cuentas',value:12,color:'FF2563EB', col:1, row:5},
-    {label:'OSAs',value:totalOSAs,color:'FF2563EB', col:1, row:7},
-    {label:'Equipos revisados',value:`${totalReviewed}/${totalEquip}`,color:'FF2563EB', col:1, row:9},
-    {label:'Avance promedio',value:avgProgress,color:'FF16A34A',pct:true, col:1, row:11},
-    {label:'Al día',value:counts['AL DÍA']+counts.FINALIZADO,color:'FF16A34A', col:6, row:5},
-    {label:'Atraso menor',value:counts['ATRASO MENOR'],color:'FFF59E0B', col:6, row:7},
-    {label:'Atraso crítico',value:counts['ATRASO CRÍTICO']+counts['CRÍTICO'],color:'FFDC2626', col:6, row:9},
-    {label:'Finalizados',value:counts.FINALIZADO,color:'FF0D9488', col:6, row:11},
+    {label:'Cuentas Totales', value: 12, col: 1, color: 'FF1E3A8A'},
+    {label:'OSAs Asignados', value: totalOSAs, col: 3, color: 'FF1E3A8A'},
+    {label:'Avance Promedio', value: avgProgress, col: 5, color: 'FF16A34A', pct: true},
+    {label:'Al Día / Finalizadas', value: counts['AL DÍA']+counts.FINALIZADO, col: 7, color: 'FF16A34A'},
+    {label:'Atraso Crítico', value: counts['ATRASO CRÍTICO']+counts['CRÍTICO'], col: 9, color: 'FFDC2626'},
   ];
-  kpis.forEach(k=>{
-    ws.mergeCells(k.row, k.col, k.row, k.col+2);
-    ws.mergeCells(k.row+1, k.col, k.row+1, k.col+2);
-    ws.getCell(k.row, k.col).value = k.label;
-    ws.getCell(k.row, k.col).font = { bold:true, size:10, color:{argb:'FF6B7280'} };
-    const v = ws.getCell(k.row+1, k.col);
-    v.value = k.value; v.font = { bold:true, size:16, color:{argb:k.color} };
-    if (k.pct) v.numFmt = '0.0%';
-    v.alignment = { horizontal:'center' };
+
+  kpis.forEach(k => {
+    ws.mergeCells(5, k.col, 6, k.col + 1);
+    const cell = ws.getCell(5, k.col);
+    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: colorLight } };
+    cell.border = { top: { style: 'thick', color: { argb: k.color } }, left: styleBorder.left, right: styleBorder.right, bottom: styleBorder.bottom };
+    cell.alignment = { vertical: 'middle', horizontal: 'center' };
+    cell.value = k.pct ? fmtPct(k.value) : k.value;
+    cell.font = { bold: true, size: 20, color: { argb: 'FF1E293B' } };
+    
+    const labelCell = ws.getCell(7, k.col);
+    ws.mergeCells(7, k.col, 7, k.col + 1);
+    labelCell.value = k.label;
+    labelCell.font = { size: 10, bold: true, color: { argb: 'FF64748B' } };
+    labelCell.alignment = { horizontal: 'center' };
   });
 
   const barImg = generateChartImage({
     type:'bar',
     data:{ labels:accs.map(a=>a.name), datasets:[
-      { label:'Avance', data:accs.map(a=>+(calcGlobal(a)*100).toFixed(1)), backgroundColor:'#2563eb', borderRadius:6 },
-      { label:'Meta', data:accs.map(()=>+(calcMeta(state.controlDate)*100).toFixed(1)), backgroundColor:'#94a3b8', borderRadius:6 },
+      { label:'Avance', data:accs.map(a=>+(calcGlobal(a)*100).toFixed(1)), backgroundColor:'#2563eb', borderRadius:4 },
+      { label:'Meta', data:accs.map(()=>+(calcMeta(state.controlDate)*100).toFixed(1)), backgroundColor:'#cbd5e1', borderRadius:4 },
     ]},
-    options:{ responsive:false, animation:false, plugins:{ title:{display:true,text:'Avance vs Meta por cuenta',font:{size:16,weight:'bold'}}, legend:{position:'bottom'}, datalabels:{display:false} }, scales:{ y:{ beginAtZero:true, max:100, ticks:{callback:v=>v+'%'} } } },
+    options:{ responsive:false, animation:false, 
+      plugins:{ 
+        title:{display:true,text:'Avance vs Meta por cuenta',font:{size:16,weight:'bold'}}, 
+        legend:{position:'bottom'},
+        datalabels: { display: true, anchor: 'end', align: 'top', formatter: (val) => val > 0 ? val + '%' : '', font: { size: 10, weight: 'bold' }, color: '#333' }
+      }, 
+      scales:{ y:{ beginAtZero:true, max:100, grid:{color:'#f1f5f9'} } } 
+    },
   });
+  
   const doughnutImg = generateChartImage({
     type:'doughnut',
-    data:{ labels:['Al día','Atraso menor','Atraso crítico','Finalizado','Sin datos'], datasets:[{ data:[counts['AL DÍA'],counts['ATRASO MENOR'],counts['ATRASO CRÍTICO']+counts['CRÍTICO'],counts.FINALIZADO,counts['SIN DATOS']], backgroundColor:['#16a34a','#f59e0b','#dc2626','#0d9488','#9ca3af'] }]},
-    options:{ responsive:false, animation:false, plugins:{ title:{display:true,text:'Distribución de estados',font:{size:16,weight:'bold'}}, legend:{position:'bottom'}, datalabels:{display:false} } },
+    data:{ labels:['Al día','Atraso menor','Atraso crítico','Finalizado','Sin datos'], datasets:[{ data:[counts['AL DÍA'],counts['ATRASO MENOR'],counts['ATRASO CRÍTICO']+counts['CRÍTICO'],counts.FINALIZADO,counts['SIN DATOS']], backgroundColor:['#16a34a','#f59e0b','#dc2626','#0d9488','#cbd5e1'] }]},
+    options:{ responsive:false, animation:false, 
+      plugins:{ 
+        title:{display:true,text:'Distribución de estados',font:{size:16,weight:'bold'}}, 
+        legend:{position:'bottom'},
+        datalabels: { display: true, color: '#fff', font: { size: 12, weight: 'bold' }, formatter: (val) => val > 0 ? val : '' }
+      } 
+    },
   });
 
-  if (barImg) ws.addImage(wb.addImage({base64:barImg,extension:'png'}), { tl:{col:0, row:13}, ext:{width:650,height:325} });
-  if (doughnutImg) ws.addImage(wb.addImage({base64:doughnutImg,extension:'png'}), { tl:{col:11, row:13}, ext:{width:380,height:325} });
+  if (barImg) ws.addImage(wb.addImage({base64:barImg,extension:'png'}), { tl:{col:0, row:9}, ext:{width:650,height:325} });
+  if (doughnutImg) ws.addImage(wb.addImage({base64:doughnutImg,extension:'png'}), { tl:{col:6, row:9}, ext:{width:380,height:325} });
 
-  const start = 35;
-  ws.mergeCells(`A${start}:F${start}`);
-  ws.getCell(`A${start}`).value = 'RESUMEN POR CUENTA';
-  ws.getCell(`A${start}`).font = { bold:true, size:13, color:{argb:'FF2563EB'} };
+  const start = 28;
+  ws.mergeCells(`A${start}:J${start}`);
+  ws.getCell(`A${start}`).value = 'RESUMEN DETALLADO POR CUENTA';
+  ws.getCell(`A${start}`).font = { bold:true, size:14, color:{argb: colorPrimary} };
+  ws.getRow(start).height = 25;
 
-  ['Cuenta','Avance','Meta','Brecha','Fase','Estado'].forEach((h,i)=>{
+  const headers = ['Cuenta', 'Avance', 'Meta', 'Brecha', 'Fase', 'Estado'];
+  headers.forEach((h,i)=>{
     const c = ws.getCell(start+1, 1+i);
-    c.value = h; c.font = { bold:true, color:{argb:'FFFFFFFF'} };
-    c.fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FF2563EB'} };
-    c.alignment = { horizontal:'center', vertical:'middle' };
+    c.value = h; c.font = styleHeader.font; c.fill = styleHeader.fill; c.alignment = styleHeader.alignment; c.border = styleBorder;
   });
+  ws.getRow(start+1).height = 25;
 
   accs.forEach((a,i)=>{
     const r = start+2+i, g = calcGlobal(a), m = calcMeta(state.controlDate), gap = g-m, st = calcStatus(a);
-    ws.getCell(r,1).value = a.name;
-    ws.getCell(r,2).value = g; ws.getCell(r,2).numFmt = '0.0%';
-    ws.getCell(r,3).value = m; ws.getCell(r,3).numFmt = '0.0%';
-    ws.getCell(r,4).value = gap; ws.getCell(r,4).numFmt = '+0.0%;-0.0%;0.0%';
-    ws.getCell(r,4).font = { color:{argb: gap<0?'FFDC2626':'FF16A34A'}, bold:true };
-    ws.getCell(r,5).value = calcPhase(a);
-    ws.getCell(r,6).value = st;
+    const row = ws.getRow(r);
+    row.getCell(1).value = a.name;
+    row.getCell(2).value = g; row.getCell(2).numFmt = '0.0%';
+    row.getCell(3).value = m; row.getCell(3).numFmt = '0.0%';
+    row.getCell(4).value = gap; row.getCell(4).numFmt = '+0.0%;-0.0%;0.0%';
+    row.getCell(4).font = { color:{argb: gap<0?'FFDC2626':'FF16A34A'}, bold:true };
+    row.getCell(5).value = calcPhase(a);
+    row.getCell(6).value = st;
+    
     const cmap = { 'AL DÍA':'FFD1FAE5','ATRASO MENOR':'FFFEF3C7','ATRASO CRÍTICO':'FFFEE2E2','CRÍTICO':'FFFEE2E2',FINALIZADO:'FFCCFBF1','SIN DATOS':'FFF3F4F6' };
-    ws.getCell(r,6).fill = { type:'pattern', pattern:'solid', fgColor:{argb:cmap[st]||'FFFFFFFF'} };
-    ws.getCell(r,6).font = { bold:true };
-    ws.getCell(r,6).alignment = { horizontal:'center' };
-    ws.getRow(r).height = 20;
+    const fcolor = { 'AL DÍA':'FF065F46','ATRASO MENOR':'FF92400E','ATRASO CRÍTICO':'FF991B1B','CRÍTICO':'FF991B1B',FINALIZADO:'FF115E59','SIN DATOS':'FF374151' };
+    
+    row.getCell(6).fill = { type:'pattern', pattern:'solid', fgColor:{argb:cmap[st]||'FFFFFFFF'} };
+    row.getCell(6).font = { bold:true, color:{argb: fcolor[st]||'FF000000'} };
+    row.getCell(6).alignment = { horizontal:'center' };
+    
+    for (let c=1; c<=6; c++) {
+        const cell = row.getCell(c);
+        cell.border = styleBorder;
+        if (i % 2 !== 0 && c !== 6) cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: colorLight } };
+    }
+    row.height = 22;
   });
 
-  /* HOJA 2: ACTUALIZAR AVANCE */
-  const wsA = wb.addWorksheet('Actualizar Avance', { properties:{ tabColor:{argb:'FF16A34A'} } });
+  /* ==================== HOJA 2: ACTUALIZAR AVANCE ==================== */
+  const wsA = wb.addWorksheet('Inventario Cuentas', { properties:{ tabColor:{argb:'FF16A34A'} } });
   wsA.columns = [
-    {header:'Cuenta',key:'name',width:20},{header:'OSAs',key:'osas',width:8},{header:'Responsable',key:'responsible',width:22},
+    {header:'Cuenta',key:'name',width:22},{header:'OSAs',key:'osas',width:8},{header:'Responsable',key:'responsible',width:24},
     {header:'Total',key:'total',width:10},{header:'Revisados',key:'reviewed',width:12},{header:'Base ok',key:'baseCount',width:10},
     {header:'AG-AS ok',key:'agasCount',width:10},{header:'QA ok',key:'qaCount',width:10},
     {header:'% Base',key:'pctBase',width:10},{header:'% AG-AS',key:'pctAGAS',width:10},{header:'% QA',key:'pctQA',width:10},
-    {header:'Global',key:'global',width:10},{header:'Fecha',key:'updateDate',width:14},{header:'Meta',key:'meta',width:10},
-    {header:'Brecha',key:'gap',width:12},{header:'Fase',key:'phase',width:22},{header:'Bloqueo',key:'block',width:10},{header:'Estado',key:'status',width:14},
+    {header:'Global',key:'global',width:15},{header:'Fecha',key:'updateDate',width:14},{header:'Meta',key:'meta',width:10},
+    {header:'Brecha',key:'gap',width:12},{header:'Fase',key:'phase',width:22},{header:'Bloqueo',key:'block',width:10},{header:'Estado',key:'status',width:16},
   ];
+  
   accs.forEach(a=>wsA.addRow({
     name:a.name, osas:a.osas, responsible:a.responsible, total:a.total, reviewed:a.reviewed,
     baseCount:a.baseCount, agasCount:a.agasCount, qaCount:a.qaCount,
     pctBase:pctBase(a), pctAGAS:pctAGAS(a), pctQA:pctQA(a), global:calcGlobal(a), updateDate:a.updateDate,
     meta:calcMeta(state.controlDate), gap:calcGap(a), phase:calcPhase(a), block:a.criticalBlock?'Sí':'No', status:calcStatus(a),
   }));
+
   const hA = wsA.getRow(1);
-  hA.font = { bold:true, color:{argb:'FFFFFFFF'} };
-  hA.fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FF2563EB'} };
+  hA.eachCell(c => { c.font = styleHeader.font; c.fill = styleHeader.fill; c.alignment = styleHeader.alignment; c.border = styleBorder; });
   hA.height = 30;
   [9,10,11,12,14].forEach(c=>wsA.getColumn(c).numFmt = '0.0%');
   wsA.getColumn(15).numFmt = '+0.0%;-0.0%;0.0%';
-  wsA.eachRow((row,r)=>{
+  
+  wsA.eachRow((row, r)=>{
     if (r===1) return;
+    row.eachCell((cell, colNumber) => {
+        cell.border = styleBorder;
+        if (r % 2 === 0) cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: colorLight } };
+    });
     const s = row.getCell(18);
     const cmap = { 'AL DÍA':'FFD1FAE5','ATRASO MENOR':'FFFEF3C7','ATRASO CRÍTICO':'FFFEE2E2','CRÍTICO':'FFFEE2E2',FINALIZADO:'FFCCFBF1','SIN DATOS':'FFF3F4F6' };
     if (cmap[s.value]) { s.fill = { type:'pattern', pattern:'solid', fgColor:{argb:cmap[s.value]} }; s.font = { bold:true }; }
     s.alignment = { horizontal:'center' };
-    row.height = 20;
+    row.height = 22;
   });
+
+  wsA.addConditionalFormatting({
+    ref: `L2:L${accs.length + 1}`,
+    rules: [
+      {
+        type: 'dataBar',
+        minLength: 0,
+        maxLength: 100,
+        color: { argb: 'FF2563EB' },
+        showValue: true,
+        gradient: true
+      }
+    ]
+  });
+  
   wsA.views = [{ state:'frozen', ySplit:1 }];
   wsA.autoFilter = { from:'A1', to:'R1' };
 
-  /* HOJA 3: ACUERDOS Y RIESGOS */
+  /* ==================== HOJA 3: RIESGOS ==================== */
   if (state.risks.length) {
-    const wsR = wb.addWorksheet('Acuerdos y Riesgos', { properties:{ tabColor:{argb:'FFDC2626'} } });
+    const wsR = wb.addWorksheet('Riesgos y Acuerdos', { properties:{ tabColor:{argb:'FFDC2626'} } });
     wsR.columns = [
-      {header:'ID',key:'id',width:8},{header:'Fecha',key:'meetingDate',width:14},{header:'Cuenta',key:'account',width:18},
-      {header:'Categoría',key:'category',width:14},{header:'Detalle',key:'detail',width:40},{header:'Impacto',key:'impact',width:10},
-      {header:'Responsable',key:'responsible',width:20},{header:'Compromiso',key:'commitmentDate',width:14},
-      {header:'Estado',key:'status',width:12},{header:'Días',key:'days',width:10},{header:'Semáforo',key:'sem',width:12},{header:'Cierre',key:'closure',width:30},
+      {header:'ID',key:'id',width:8},{header:'Fecha',key:'meetingDate',width:14},{header:'Cuenta',key:'account',width:20},
+      {header:'Categoría',key:'category',width:14},{header:'Detalle',key:'detail',width:45},{header:'Impacto',key:'impact',width:10},
+      {header:'Responsable',key:'responsible',width:24},{header:'Compromiso',key:'commitmentDate',width:14},
+      {header:'Estado',key:'status',width:12},{header:'Días',key:'days',width:10},{header:'Semáforo',key:'sem',width:14},{header:'Cierre',key:'closure',width:30},
     ];
     state.risks.forEach(r=>wsR.addRow({
       id:r.id, meetingDate:r.meetingDate, account:r.account, category:r.category, detail:r.detail,
       impact:r.impact, responsible:r.responsible, commitmentDate:r.commitmentDate, status:r.status,
       days:calcRiskDays(r), sem:calcRiskSemaphore(r), closure:r.closure,
     }));
+    
     const hR = wsR.getRow(1);
-    hR.font = { bold:true, color:{argb:'FFFFFFFF'} };
-    hR.fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FFDC2626'} };
+    hR.eachCell(c => { c.font = styleHeader.font; c.fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FFDC2626'} }; c.alignment = styleHeader.alignment; c.border = styleBorder; });
     hR.height = 30;
+
+    wsR.eachRow((row, r) => {
+        if (r===1) return;
+        row.eachCell((cell) => {
+            cell.border = styleBorder;
+            if (r % 2 === 0) cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: colorLight } };
+        });
+        const semCell = row.getCell(11);
+        const s = semCell.value;
+        if (s === 'CERRADO') semCell.font = { color: { argb: 'FF16A34A' }, bold: true };
+        if (s === 'VENCIDO') semCell.font = { color: { argb: 'FFDC2626' }, bold: true };
+        if (s === 'URGENTE') semCell.font = { color: { argb: 'FFF59E0B' }, bold: true };
+        row.height = 22;
+    });
     wsR.views = [{ state:'frozen', ySplit:1 }];
+    wsR.autoFilter = { from:'A1', to:'L1' };
   }
 
-  /* HOJA 4: HISTORIAL */
+  /* ==================== HOJA 4: HISTORIAL ==================== */
   if (state.history.length) {
     const wsH = wb.addWorksheet('Historial', { properties:{ tabColor:{argb:'FFF59E0B'} } });
     wsH.columns = [
-      {header:'Fecha',key:'date',width:14},{header:'Cuenta',key:'account',width:20},{header:'OSAs',key:'osas',width:8},
+      {header:'Fecha',key:'date',width:14},{header:'Cuenta',key:'account',width:22},{header:'OSAs',key:'osas',width:8},
       {header:'Total',key:'total',width:10},{header:'Revisados',key:'reviewed',width:12},{header:'Base ok',key:'baseCount',width:10},
       {header:'AG-AS ok',key:'agasCount',width:10},{header:'QA ok',key:'qaCount',width:10},
       {header:'% Base',key:'pctBase',width:10},{header:'% AG-AS',key:'pctAGAS',width:10},{header:'% QA',key:'pctQA',width:10},
-      {header:'Global',key:'global',width:10},{header:'Estado',key:'status',width:14},{header:'Comentario',key:'comment',width:40},
+      {header:'Global',key:'global',width:10},{header:'Estado',key:'status',width:16},{header:'Comentario',key:'comment',width:45},
     ];
     state.history.forEach(h=>wsH.addRow(h));
+    
     const hH = wsH.getRow(1);
-    hH.font = { bold:true, color:{argb:'FFFFFFFF'} };
-    hH.fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FFF59E0B'} };
+    hH.eachCell(c => { c.font = styleHeader.font; c.fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FFF59E0B'} }; c.alignment = styleHeader.alignment; c.border = styleBorder; });
     hH.height = 30;
     [9,10,11,12].forEach(c=>wsH.getColumn(c).numFmt = '0.0%');
+    
+    wsH.eachRow((row, r) => {
+        if (r===1) return;
+        row.eachCell((cell) => {
+            cell.border = styleBorder;
+            if (r % 2 === 0) cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: colorLight } };
+        });
+        row.height = 22;
+    });
     wsH.views = [{ state:'frozen', ySplit:1 }];
+    wsH.autoFilter = { from:'A1', to:'N1' };
   }
 
   const buf = await wb.xlsx.writeBuffer();
-  download(new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}), `MPS_Control_${new Date().toISOString().slice(0,10)}.xlsx`);
-  toast('✓ Excel exportado');
+  download(new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}), `MPS_Ejecutivo_${new Date().toISOString().slice(0,10)}.xlsx`);
+  toast('✓ Excel Ejecutivo exportado');
 }
 
 /* ========== UTILS ========== */
