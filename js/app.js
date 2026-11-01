@@ -578,11 +578,194 @@ function renderSettings(app) {
 
 function generateChartImage(config) { if (typeof Chart === 'undefined') return null; const c = document.createElement('canvas'); c.width = 900; c.height = 450; const chart = new Chart(c, config); const url = c.toDataURL('image/png', 1.0); chart.destroy(); return url.split(',')[1]; }
 async function exportToExcel() {
-  if (typeof ExcelJS === 'undefined') { toast('ExcelJS no cargó'); return; }
-  const accs = state.accounts, wb = new ExcelJS.Workbook(), ws = wb.addWorksheet('Inventario');
-  ws.columns = [{header:'Cuenta',key:'name'},{header:'Total',key:'total'},{header:'Revisados',key:'reviewed'},{header:'Global',key:'global'}];
-  accs.forEach(a=>ws.addRow({name:a.name, total:a.total, reviewed:a.reviewed, global:fmtPct(calcGlobal(a))}));
-  const buf = await wb.xlsx.writeBuffer(); download(new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}), `MPS.xlsx`);
+  if (typeof ExcelJS === 'undefined') { toast('ExcelJS no cargado. Revisá tu conexión.'); return; }
+  toast('Generando Excel Ejecutivo Dinámico...');
+
+  const accs = state.accounts;
+  const totalOSAs = accs.reduce((s,a)=>s+(+a.osas||0),0);
+  const avgProgress = accs.reduce((s,a)=>s+calcGlobal(a),0)/accs.length;
+  const totalReviewed = accs.reduce((s,a)=>s+(+a.reviewed||0),0);
+  const totalEquip = accs.reduce((s,a)=>s+(+a.total||0),0);
+
+  const counts = { FINALIZADO:0, 'AL DÍA':0, 'ATRASO MENOR':0, 'ATRASO CRÍTICO':0, 'CRÍTICO':0, 'SIN DATOS':0 };
+  accs.forEach(a=>counts[calcStatus(a)]++);
+  const enRojo = counts['ATRASO CRÍTICO'] + counts['CRÍTICO'];
+
+  const wb = new ExcelJS.Workbook();
+  wb.creator = 'Control Proyecto Inventarios MPS 2026';
+  wb.created = new Date();
+
+  // Paleta de colores basada en la imagen
+  const colors = {
+    darkBlue: 'FF1E3A8A',
+    teal: 'FF0D9488',
+    blue: 'FF2563EB',
+    purple: 'FF8B5CF6',
+    red: 'FFDC2626',
+    green: 'FF16A34A',
+    lightBg: 'FFF8FAFC',
+    border: 'FFE2E8F0'
+  };
+
+  const borderStyle = {
+    top: { style: 'thin', color: { argb: colors.border } },
+    left: { style: 'thin', color: { argb: colors.border } },
+    bottom: { style: 'thin', color: { argb: colors.border } },
+    right: { style: 'thin', color: { argb: colors.border } }
+  };
+
+  /* ==================== HOJA 1: 01_Dashboard ==================== */
+  const ws = wb.addWorksheet('01_Dashboard', { views:[{showGridLines:false}], properties:{ tabColor:{argb: colors.teal} } });
+  // Configurar ancho de columnas para que quepan los datos y gráficos
+  ws.columns = [{width:16},{width:12},{width:12},{width:12},{width:12},{width:12},{width:12},{width:12},{width:12},{width:12},{width:12},{width:12}];
+
+  // 1. Cabecera
+  ws.mergeCells('A1:L2');
+  const title = ws.getCell('A1');
+  title.value = 'DASHBOARD EJECUTIVO DEL PROYECTO';
+  title.font = { bold:true, size:18, color:{argb:'FFFFFFFF'} };
+  title.fill = { type:'pattern', pattern:'solid', fgColor:{argb: colors.darkBlue} };
+  title.alignment = { horizontal:'left', vertical:'middle' };
+  ws.getRow(1).height = 30; ws.getRow(2).height = 30;
+
+  ws.mergeCells('A3:L3');
+  ws.getCell('A3').value = `Área MPS / Seguimiento de 12 cuentas / Cierre comprometido: 30-11-2026`;
+  ws.getCell('A3').font = { size:10, color:{argb:'FF64748B'} };
+  ws.getCell('A3').alignment = { horizontal:'left', vertical:'middle' };
+
+  // 2. Cuadros KPI
+  const kpis = [
+    {label:'CUENTAS', value: 12, startCol: 1, color: colors.teal},
+    {label:'OSAs', value: totalOSAs, startCol: 4, color: colors.blue},
+    {label:'AVANCE PROMEDIO', value: fmtPct(avgProgress), startCol: 7, color: colors.purple},
+    {label:'CUENTAS EN ROJO', value: enRojo, startCol: 10, color: colors.red},
+    {label:'EQUIPOS REVISADOS', value: totalReviewed, startCol: 12, color: colors.green} // Ajustado para que quepa
+  ];
+
+  kpis.forEach(k => {
+    // Título del KPI
+    ws.mergeCells(5, k.startCol, 5, k.startCol + 1);
+    const headerCell = ws.getCell(5, k.startCol);
+    headerCell.value = k.label;
+    headerCell.font = { bold: true, size: 10, color: { argb: 'FFFFFFFF' } };
+    headerCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: k.color } };
+    headerCell.alignment = { horizontal: 'center', vertical: 'middle' };
+    
+    // Valor del KPI
+    ws.mergeCells(6, k.startCol, 7, k.startCol + 1);
+    const valCell = ws.getCell(6, k.startCol);
+    valCell.value = k.value;
+    valCell.font = { bold: true, size: 20, color: { argb: 'FF1E293B' } };
+    valCell.alignment = { horizontal: 'center', vertical: 'middle' };
+    valCell.border = borderStyle;
+  });
+
+  // 3. Tabla de Resumen
+  ws.mergeCells('A9:L9');
+  ws.getCell('A9').value = 'Resumen por cuenta';
+  ws.getCell('A9').font = { bold:true, size:14, color:{argb: colors.darkBlue} };
+  ws.getCell('A9').alignment = { horizontal:'left', vertical:'middle' };
+  ws.getRow(9).height = 25;
+
+  const headers = ['Cuenta', 'OSAs', 'Equipos', 'Revisados', 'Base', 'AG-AS', 'QA', 'Global', 'Estado visual'];
+  // Encabezados de la tabla
+  headers.forEach((h, i) => {
+    const c = ws.getCell(10, i + 1);
+    c.value = h; 
+    c.font = { bold: true, size: 11, color: { argb: 'FFFFFFFF' } };
+    c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: colors.darkBlue } };
+    c.alignment = { horizontal: 'center', vertical: 'middle' };
+    c.border = borderStyle;
+  });
+  ws.getRow(10).height = 20;
+
+  // Datos de la tabla
+  accs.forEach((a, i) => {
+    const r = 11 + i;
+    const g = calcGlobal(a), st = calcStatus(a);
+    const row = ws.getRow(r);
+    
+    row.getCell(1).value = a.name;
+    row.getCell(2).value = a.osas;
+    row.getCell(3).value = a.total;
+    row.getCell(4).value = a.reviewed;
+    row.getCell(5).value = fmtPct(pctBase(a));
+    row.getCell(6).value = fmtPct(pctAGAS(a));
+    row.getCell(7).value = fmtPct(pctQA(a));
+    row.getCell(8).value = fmtPct(g);
+    row.getCell(9).value = st;
+
+    // Estilos de la fila
+    for (let c = 1; c <= 9; c++) {
+        const cell = row.getCell(c);
+        cell.border = borderStyle;
+        cell.alignment = { horizontal: 'center', vertical: 'middle' };
+        if (c === 1) cell.alignment = { horizontal: 'left', vertical: 'middle' };
+    }
+
+    // Colorear la celda de estado
+    if (st === 'AL DÍA' || st === 'FINALIZADO') {
+        row.getCell(9).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD1FAE5' } };
+        row.getCell(9).font = { color: { argb: 'FF065F46' }, bold: true };
+    } else if (st === 'ATRASO MENOR') {
+        row.getCell(9).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEF3C7' } };
+        row.getCell(9).font = { color: { argb: 'FF92400E' }, bold: true };
+    } else {
+        row.getCell(9).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEE2E2' } };
+        row.getCell(9).font = { color: { argb: 'FF991B1B' }, bold: true };
+    }
+  });
+
+  // 4. Insertar Gráficos (Como imágenes para que no se rompan al enviar)
+  // Ajustamos el tamaño para que queden a la derecha de la tabla o debajo (como en tu imagen)
+  const startRowCharts = 24;
+
+  // Gráfico de Barras
+  const barImg = generateChartImage({
+    type:'bar',
+    data:{ labels:accs.map(a=>a.name), datasets:[
+      { label:'Avance', data:accs.map(a=>+(calcGlobal(a)*100).toFixed(1)), backgroundColor:'#2563eb' },
+    ]},
+    options:{ responsive:false, animation:false, plugins:{ title:{display:true,text:'Avance global por cuenta',font:{size:14,weight:'bold'}}, legend:{display:false} }, scales:{ y:{ beginAtZero:true, max:100 } } },
+  });
+
+  // Gráfico de Dona
+  const doughnutImg = generateChartImage({
+    type:'doughnut',
+    data:{ labels:['Al día','Atraso menor','Atraso crítico','Finalizado','Sin datos'], datasets:[{ data:[counts['AL DÍA'],counts['ATRASO MENOR'],counts['ATRASO CRÍTICO']+counts['CRÍTICO'],counts.FINALIZADO,counts['SIN DATOS']], backgroundColor:['#16a34a','#f59e0b','#dc2626','#0d9488','#cbd5e1'] }]},
+    options:{ responsive:false, animation:false, plugins:{ title:{display:true,text:'Estado de hitos y metas',font:{size:14,weight:'bold'}}, legend:{position:'right'} } },
+  });
+
+  if (barImg) ws.addImage(wb.addImage({base64:barImg,extension:'png'}), { tl:{col:0, row:startRowCharts}, ext:{width:550,height:280} });
+  if (doughnutImg) ws.addImage(wb.addImage({base64:doughnutImg,extension:'png'}), { tl:{col:6, row:startRowCharts}, ext:{width:450,height:280} });
+
+  /* ==================== HOJA 2: 02_Inventario ==================== */
+  const wsA = wb.addWorksheet('02_Inventario', { properties:{ tabColor:{argb: colors.green} } });
+  wsA.columns = [
+    {header:'Cuenta',key:'name',width:22},{header:'OSAs',key:'osas',width:8},{header:'Responsable',key:'responsible',width:24},
+    {header:'Total',key:'total',width:10},{header:'Revisados',key:'reviewed',width:12},{header:'Base ok',key:'baseCount',width:10},
+    {header:'AG-AS ok',key:'agasCount',width:10},{header:'QA ok',key:'qaCount',width:10},
+    {header:'Global',key:'global',width:12},{header:'Estado',key:'status',width:18},
+  ];
+
+  accs.forEach(a=>wsA.addRow({
+    name:a.name, osas:a.osas, responsible:a.responsible, total:a.total, reviewed:a.reviewed,
+    baseCount:a.baseCount, agasCount:a.agasCount, qaCount:a.qaCount,
+    global:fmtPct(calcGlobal(a)), status:calcStatus(a)
+  }));
+
+  // Estilos Hoja 2
+  const hA = wsA.getRow(1);
+  hA.eachCell(c => { c.font = {bold:true, color:{argb:'FFFFFFFF'}}; c.fill = { type:'pattern', pattern:'solid', fgColor:{argb: colors.darkBlue} }; c.alignment={horizontal:'center'}; });
+  wsA.eachRow((row, r)=>{
+    if (r===1) return;
+    row.eachCell((cell) => { cell.border = borderStyle; });
+  });
+
+  /* ==================== EXPORTAR ==================== */
+  const buf = await wb.xlsx.writeBuffer();
+  download(new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}), `MPS_Ejecutivo_${new Date().toISOString().slice(0,10)}.xlsx`);
+  toast('✓ Excel Ejecutivo generado con éxito');
 }
 
 function download(blob, filename) { const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = filename; a.click(); URL.revokeObjectURL(a.href); }
