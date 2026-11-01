@@ -495,11 +495,77 @@ async function renderBackups(app) {
 }
 
 function renderInstructions(app) {
-  app.innerHTML = `<div class="card"><h2>📖 Guía del Sistema</h2><div class="instruction-step" style="border-left-color: #2563eb;"><h4>Objetivo</h4><p>Controlar la implementación del nuevo formato de inventario en las 12 cuentas MPS. Cierre: 30-11-2026.</p></div>
-    <div class="instruction-step"><h4>Reglas del Semáforo</h4><ul><li><span class="badge badge-verde">AL DÍA</span> Cumple meta.</li><li><span class="badge badge-ambar">ATRASO MENOR</span> Hasta 10 pts debajo.</li><li><span class="badge badge-rojo">ATRASO CRÍTICO</span> Más de 10 pts debajo o bloqueo.</li><li><span class="badge badge-finalizado">FINALIZADO</span> 100%.</li></ul><p><em>Ponderación: 45% Base + 35% AG-AS + 20% QA.</em></p></div>
-    <div class="instruction-step" style="border-left-color: #16a34a;"><h4>Actualización rápida</h4><p>Ve a <strong>Inventario Cuentas</strong>, edita los números o usa <strong>Importar Excel OSA</strong>. Si hay bloqueo, describe acción y fecha.</p></div></div>`;
-}
+  app.innerHTML = `
+    <div class="card">
+      <h2>📖 Guía del Sistema · Control Proyecto Inventarios MPS 2026</h2>
+      <p class="help" style="margin-bottom:20px">Esta guía detalla el objetivo del proyecto, la función de cada pestaña y el procedimiento paso a paso para que cualquier persona pueda operar la aplicación sin depender de un experto.</p>
 
+      <div class="instruction-step" style="border-left-color: #2563eb;">
+        <h4>Objetivo del Proyecto</h4>
+        <p>Este sistema controla la implementación del nuevo formato de inventario en las 12 cuentas del área MPS (Servicio de Impresión Gestionado). Cada OSA (Operador de Servicio) completa su archivo individual de inventario. El supervisor (tú) actualiza este control en las reuniones de seguimiento, registra bloqueos y presenta el avance al mandante.</p>
+        <p><strong>Cierre comprometido:</strong> 30-11-2026.</p>
+      </div>
+
+      <div class="instruction-step">
+        <h4>¿Qué hace cada parte del sitio?</h4>
+        <ul>
+          <li><strong>Dashboard:</strong> Vista ejecutiva. Muestra los KPIs (tarjetas), gráficos de avance vs meta, distribución de estados y los hitos del proyecto. No se edita manualmente; se alimenta de las demás pestañas.</li>
+          <li><strong>Plan Semanal:</strong> Te indica en qué semana del cronograma estás, cuál es el foco actual (ej: Levantamiento A-AF) y te muestra las reuniones prioritarias ordenadas por criticidad (las rojas primero).</li>
+          <li><strong>Inventario Cuentas:</strong> Es la hoja principal de carga. Aquí ingresas los datos de cada cuenta (Total equipos, Revisados, Base A-AF, AG-AS y QA), registras bloqueos y observaciones.</li>
+          <li><strong>Gantt:</strong> Muestra la línea de tiempo comprometida para cada cuenta y fase, con vista de días para ver la evolución temporal.</li>
+          <li><strong>Acuerdos y Riesgos:</strong> Registro formal de bloqueos, decisiones y compromisos. Cada registro tiene un responsable y una fecha de vencimiento con semáforo automático.</li>
+          <li><strong>Historial:</strong> Conserva una "foto" (snapshot) del avance de cada cuenta en cada reunión. Permite reconstruir la evolución semanal.</li>
+          <li><strong>Cronograma:</strong> Pauta detallada de las actividades esperadas por semana, entregables, evidencias y riesgos a controlar.</li>
+          <li><strong>Respaldos:</strong> Sistema de 5 capas de seguridad (LocalStorage, IndexedDB, Snapshots, Carpeta Local y Descarga JSON) para no perder nunca la información.</li>
+          <li><strong>Configuración:</strong> Ajustes de la fecha de control, exportación de datos y reinicio del sistema.</li>
+        </ul>
+      </div>
+
+      <div class="instruction-step" style="border-left-color: #16a34a;">
+        <h4>Reglas del Semáforo (Estados)</h4>
+        <p>El estado se calcula automáticamente según el avance global vs la meta a la fecha:</p>
+        <ul>
+          <li><span class="badge badge-verde">AL DÍA</span> Cumple o supera la meta correspondiente a la fecha de control.</li>
+          <li><span class="badge badge-ambar">ATRASO MENOR</span> Está hasta 10 puntos porcentuales por debajo de la meta.</li>
+          <li><span class="badge badge-rojo">ATRASO CRÍTICO</span> Está a más de 10 puntos por debajo de la meta o posee un bloqueo crítico.</li>
+          <li><span class="badge badge-finalizado">FINALIZADO</span> El avance global ha llegado al 100%.</li>
+          <li><span class="badge badge-sin-fecha">SIN DATOS</span> No hay información cargada para esa cuenta.</li>
+        </ul>
+        <p><em>El avance global se calcula con la ponderación: 45% Base A-AF + 35% AG-AS + 20% QA.</em></p>
+      </div>
+
+      <div class="instruction-step">
+        <h4>Cómo actualizar el libro en menos de 5 minutos</h4>
+        <p><strong>Opción A: Registro Manual (Reunión con el OSA)</strong></p>
+        <ol style="padding-left: 24px; font-size: 14px; color: var(--gray-700); margin-bottom: 16px;">
+          <li>Ve a <strong>Plan Semanal</strong> (o <strong>Inventario Cuentas</strong>) y haz clic en la fila/tarjeta de la cuenta que vas a revisar.</li>
+          <li>En la ventana que se abre, ingresa las cantidades exactas dictadas por el OSA (Total, Revisados, Base, AG-AS, QA).</li>
+          <li>Si hay un bloqueo, márcalo y describe la próxima acción, responsable y fecha compromiso.</li>
+          <li>Haz clic en <strong>"Guardar corte de esta cuenta"</strong>. Los porcentajes y el semáforo se calculan solos.</li>
+        </ol>
+        <p><strong>Opción B: Carga desde Excel del OSA</strong></p>
+        <ol style="padding-left: 24px; font-size: 14px; color: var(--gray-700);">
+          <li>Ve a <strong>Inventario Cuentas</strong> y haz clic en <strong>"📂 Importar Excel de OSA"</strong>.</li>
+          <li>Selecciona el archivo del OSA. El sistema contará automáticamente cuántos equipos tienen la Base (32 columnas) y AG-AS (13 columnas) completas.</li>
+          <li>💡 <strong>Truco:</strong> Si el archivo incluye el nombre de la cuenta en su nombre (ej: <em>FASA_Inventario_Octubre.xlsx</em>), el sistema <strong>seleccionará la cuenta automáticamente</strong>. De lo contrario, elígela manualmente del menú desplegable y haz clic en Aplicar.</li>
+        </ol>
+      </div>
+
+      <div class="instruction-step" style="border-left-color: #f59e0b;">
+        <h4>Controles antes de presentar al mandante</h4>
+        <p>Antes de guardar el corte semanal y exportar a Excel, asegúrate de:</p>
+        <ul>
+          <li>✓ Confirmar que todas las cuentas tengan la fecha de último reporte actualizada.</li>
+          <li>✓ Validar que "Equipos revisados" no supere el "Total equipos".</li>
+          <li>✓ Revisar que no haya celdas rojas sin justificación en las observaciones.</li>
+          <li>✓ Verificar que cada bloqueo tenga próxima acción, responsable y fecha compromiso.</li>
+          <li>✓ Usar la Gantt como planificación y el Dashboard/Inventario Cuentas como evidencia del avance real.</li>
+          <li>✓ Guardar el corte en Historial y descargar el Excel para enviar por correo.</li>
+        </ul>
+      </div>
+    </div>
+  `;
+}
 function renderSettings(app) {
   app.innerHTML = `<div class="card"><h2>Configuración</h2><div class="form-grid" style="margin-bottom:20px"><div><label>Fecha de control</label><input type="date" id="setControlDate" value="${state.controlDate}"></div></div><div style="display:flex;gap:10px;flex-wrap:wrap"><button class="btn btn-primary" id="btnExportJSON">⬇ JSON</button><button class="btn" id="btnImportJSON">⬆ Importar JSON</button><button class="btn" id="btnExportCSV">⬇ CSV</button><button class="btn btn-danger" id="btnReset">🔄 Reiniciar</button></div><input type="file" id="fileImport" accept="application/json" hidden></div>`;
   document.getElementById('setControlDate').addEventListener('change',e=>{ state.controlDate=e.target.value; saveState(); render(); });
