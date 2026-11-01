@@ -1214,13 +1214,14 @@ function renderSettings(app) {
   });
 }
 
-/* ========== EXPORTAR EXCEL (DISEÑO EJECUTIVO) ========== */
-function generateChartImage(config) {
+/* ========== EXPORTAR EXCEL (DISEÑO EJECUTIVO AVANZADO) ========== */
+function generateChartImage(config, bgColor = '#ffffff') {
   if (typeof Chart === 'undefined') return null;
   const c = document.createElement('canvas');
   c.width = 900; c.height = 450;
   const ctx = c.getContext('2d');
-  ctx.fillStyle = '#ffffff'; ctx.fillRect(0,0,c.width,c.height);
+  ctx.fillStyle = bgColor; 
+  ctx.fillRect(0,0,c.width,c.height);
   const chart = new Chart(c, config);
   const url = c.toDataURL('image/png', 1.0);
   chart.destroy();
@@ -1229,11 +1230,12 @@ function generateChartImage(config) {
 
 async function exportToExcel() {
   if (typeof ExcelJS === 'undefined') { toast('ExcelJS no cargado'); return; }
-  toast('Generando Excel Ejecutivo Dinámico...');
+  toast('Generando Excel Ejecutivo Premium...');
   
   const accs = state.accounts;
   const totalOSAs = accs.reduce((s,a)=>s+(+a.osas||0),0);
   const avgProgress = accs.reduce((s,a)=>s+calcGlobal(a),0)/accs.length;
+  const totalReviewed = accs.reduce((s,a)=>s+(+a.reviewed||0),0);
   
   const counts = { FINALIZADO:0, 'AL DÍA':0, 'ATRASO MENOR':0, 'ATRASO CRÍTICO':0, 'CRÍTICO':0, 'SIN DATOS':0 };
   accs.forEach(a=>counts[calcStatus(a)]++);
@@ -1242,17 +1244,7 @@ async function exportToExcel() {
   wb.creator = 'Control Proyecto Inventarios MPS 2026';
   wb.created = new Date();
 
-  const colorPrimary = 'FF1E3A8A'; // Azul oscuro ejecutivo
-  const colorLight = 'FFF8FAFC';   // Gris muy claro
-  const colorBorder = 'FFE2E8F0';  // Gris borde
-
-  const styleHeader = {
-    font: { bold: true, color: { argb: 'FFFFFFFF' }, size: 11 },
-    fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: colorPrimary } },
-    alignment: { vertical: 'middle', horizontal: 'center' },
-    border: { top: { style: 'thin', color: { argb: colorPrimary } }, bottom: { style: 'thin', color: { argb: colorPrimary } } }
-  };
-  
+  const colorBorder = 'FFE2E8F0';
   const styleBorder = {
     top: { style: 'thin', color: { argb: colorBorder } },
     left: { style: 'thin', color: { argb: colorBorder } },
@@ -1260,119 +1252,198 @@ async function exportToExcel() {
     right: { style: 'thin', color: { argb: colorBorder } }
   };
 
-  /* ==================== HOJA 1: DASHBOARD EJECUTIVO ==================== */
-  const ws = wb.addWorksheet('Dashboard', { views:[{showGridLines:false}], properties:{ tabColor:{argb: colorPrimary} } });
+  /* ==================== HOJA DASHBOARD ==================== */
+  const ws = wb.addWorksheet('Dashboard', { views:[{showGridLines:false}], properties:{ tabColor:{argb:'FF1E3A8A'} } });
+  // Ajustar anchos de columna (10 columnas en total para simetría)
   ws.columns = [{width:14},{width:14},{width:14},{width:14},{width:14},{width:14},{width:14},{width:14},{width:14},{width:14}];
 
+  // 1. TÍTULO PRINCIPAL
   ws.mergeCells('A1:J2');
-  const t = ws.getCell('A1');
-  t.value = 'DASHBOARD EJECUTIVO · CONTROL INVENTARIOS MPS 2026';
-  t.font = { bold:true, size:18, color:{argb:'FFFFFFFF'} };
-  t.fill = { type:'pattern', pattern:'solid', fgColor:{argb: colorPrimary} };
-  t.alignment = { horizontal:'center', vertical:'middle' };
-  ws.getRow(1).height = 35; ws.getRow(2).height = 35;
+  const titleCell = ws.getCell('A1');
+  titleCell.value = 'DASHBOARD EJECUTIVO DEL PROYECTO';
+  titleCell.font = { bold:true, size:20, color:{argb:'FFFFFFFF'} };
+  titleCell.fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FF1E3A8A'} };
+  titleCell.alignment = { horizontal:'left', vertical:'middle', indent: 1 };
+  ws.getRow(1).height = 30; ws.getRow(2).height = 30;
 
+  // 2. SUBTÍTULO
   ws.mergeCells('A3:J3');
-  ws.getCell('A3').value = `Cierre: 30-11-2026 · Generado: ${new Date().toLocaleString('es-CL')} · Fecha control: ${state.controlDate}`;
-  ws.getCell('A3').font = { italic:true, size:10, color:{argb:'FF64748B'} };
-  ws.getCell('A3').alignment = { horizontal:'center', vertical:'middle' };
+  const subCell = ws.getCell('A3');
+  subCell.value = 'Área MPS / Seguimiento de 12 cuentas / Cierre comprometido: 30-11-2026';
+  subCell.font = { italic:true, size:11, color:{argb:'FF1E3A8A'} };
+  subCell.fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FFE0F2FE'} };
+  subCell.alignment = { horizontal:'left', vertical:'middle', indent: 1 };
   ws.getRow(3).height = 25;
 
+  // 3. TARJETAS KPI
   const kpis = [
-    {label:'Cuentas Totales', value: 12, col: 1, color: 'FF1E3A8A'},
-    {label:'OSAs Asignados', value: totalOSAs, col: 3, color: 'FF1E3A8A'},
-    {label:'Avance Promedio', value: avgProgress, col: 5, color: 'FF16A34A', pct: true},
-    {label:'Al Día / Finalizadas', value: counts['AL DÍA']+counts.FINALIZADO, col: 7, color: 'FF16A34A'},
-    {label:'Atraso Crítico', value: counts['ATRASO CRÍTICO']+counts['CRÍTICO'], col: 9, color: 'FFDC2626'},
+    {label:'CUENTAS', value: 12, col: 1, bg: 'FF0D9488'}, // Teal
+    {label:'OSAs', value: totalOSAs, col: 3, bg: 'FF2563EB'}, // Blue
+    {label:'AVANCE PROMEDIO', value: avgProgress, col: 5, bg: 'FF7C3AED', pct: true}, // Purple
+    {label:'CUENTAS EN ROJO', value: counts['ATRASO CRÍTICO']+counts['CRÍTICO'], col: 7, bg: 'FFDC2626'}, // Red
+    {label:'EQUIPOS REVISADOS', value: totalReviewed, col: 9, bg: 'FF16A34A'}, // Green
   ];
 
   kpis.forEach(k => {
-    ws.mergeCells(5, k.col, 6, k.col + 1);
-    const cell = ws.getCell(5, k.col);
-    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: colorLight } };
-    cell.border = { top: { style: 'thick', color: { argb: k.color } }, left: styleBorder.left, right: styleBorder.right, bottom: styleBorder.bottom };
-    cell.alignment = { vertical: 'middle', horizontal: 'center' };
-    cell.value = k.pct ? fmtPct(k.value) : k.value;
-    cell.font = { bold: true, size: 20, color: { argb: 'FF1E293B' } };
+    ws.mergeCells(5, k.col, 5, k.col + 1);
+    const hCell = ws.getCell(5, k.col);
+    hCell.value = k.label;
+    hCell.font = { bold: true, size: 10, color: { argb: 'FFFFFFFF' } };
+    hCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: k.bg } };
+    hCell.alignment = { vertical: 'middle', horizontal: 'center' };
     
-    const labelCell = ws.getCell(7, k.col);
-    ws.mergeCells(7, k.col, 7, k.col + 1);
-    labelCell.value = k.label;
-    labelCell.font = { size: 10, bold: true, color: { argb: 'FF64748B' } };
-    labelCell.alignment = { horizontal: 'center' };
+    ws.mergeCells(6, k.col, 6, k.col + 1);
+    const vCell = ws.getCell(6, k.col);
+    vCell.value = k.pct ? fmtPct(k.value) : k.value;
+    vCell.font = { bold: true, size: 22, color: { argb: 'FF1E293B' } };
+    vCell.alignment = { vertical: 'middle', horizontal: 'center' };
+    vCell.border = { top: { style: 'thin', color: { argb: k.bg } }, left: styleBorder.left, right: styleBorder.right, bottom: styleBorder.bottom };
   });
+  ws.getRow(5).height = 20; ws.getRow(6).height = 35;
+
+  // 4. GRÁFICOS (Fondo Oscuro y Etiquetas)
+  const chartTextColor = '#ffffff';
+  const chartGridColor = '#374151';
+  const darkBg = '#1f2937';
 
   const barImg = generateChartImage({
     type:'bar',
     data:{ labels:accs.map(a=>a.name), datasets:[
-      { label:'Avance', data:accs.map(a=>+(calcGlobal(a)*100).toFixed(1)), backgroundColor:'#2563eb', borderRadius:4 },
-      { label:'Meta', data:accs.map(()=>+(calcMeta(state.controlDate)*100).toFixed(1)), backgroundColor:'#cbd5e1', borderRadius:4 },
+      { label:'% Avance', data:accs.map(a=>+(calcGlobal(a)*100).toFixed(1)), backgroundColor:['#06b6d4','#f43f5e','#8b5cf6','#f59e0b','#10b981','#3b82f6','#6366f1','#ec4899','#14b8a6','#f97316','#ef4444','#06b6d4'], borderRadius:4 }
     ]},
     options:{ responsive:false, animation:false, 
       plugins:{ 
-        title:{display:true,text:'Avance vs Meta por cuenta',font:{size:16,weight:'bold'}}, 
-        legend:{position:'bottom'},
-        datalabels: { display: true, anchor: 'end', align: 'top', formatter: (val) => val > 0 ? val + '%' : '', font: { size: 10, weight: 'bold' }, color: '#333' }
+        title:{display:true,text:'Avance global por cuenta', font:{size:16, weight:'bold', color: chartTextColor}}, 
+        legend:{display:false},
+        datalabels: { display: true, anchor: 'end', align: 'top', formatter: (val) => val + '%', font: { size: 10, weight: 'bold' }, color: chartTextColor }
       }, 
-      scales:{ y:{ beginAtZero:true, max:100, grid:{color:'#f1f5f9'} } } 
+      scales:{ 
+        x:{ ticks:{color: chartTextColor}, grid:{display:false} },
+        y:{ beginAtZero:true, max:100, ticks:{color: chartTextColor, callback:v=>v+'%'}, grid:{color: chartGridColor} } 
+      } 
     },
-  });
+  }, darkBg);
+  
+  // Calcular datos para el gráfico de hitos
+  let hitosCumplidos = 1; // Preparación
+  let hitosProximos = 5;  // El resto
+  let hitosPendientes = 0;
+  if (avgProgress < 0.10) { hitosCumplidos = 0; hitosProximos = 6; }
   
   const doughnutImg = generateChartImage({
     type:'doughnut',
-    data:{ labels:['Al día','Atraso menor','Atraso crítico','Finalizado','Sin datos'], datasets:[{ data:[counts['AL DÍA'],counts['ATRASO MENOR'],counts['ATRASO CRÍTICO']+counts['CRÍTICO'],counts.FINALIZADO,counts['SIN DATOS']], backgroundColor:['#16a34a','#f59e0b','#dc2626','#0d9488','#cbd5e1'] }]},
-    options:{ responsive:false, animation:false, 
+    data:{ labels:['Cumplidos','Próximos','Pendientes'], datasets:[{ data:[hitosCumplidos, hitosProximos, hitosPendientes], backgroundColor:['#a3e635','#3b82f6','#ef4444'] }]},
+    options:{ responsive:false, animation:false, cutout: '65%',
       plugins:{ 
-        title:{display:true,text:'Distribución de estados',font:{size:16,weight:'bold'}}, 
-        legend:{position:'bottom'},
-        datalabels: { display: true, color: '#fff', font: { size: 12, weight: 'bold' }, formatter: (val) => val > 0 ? val : '' }
+        title:{display:true,text:'Estado de hitos y metas', font:{size:16, weight:'bold', color: chartTextColor}}, 
+        legend:{position:'right', labels: {color: chartTextColor}},
+        datalabels: { display: true, color: chartTextColor, font: { size: 12, weight: 'bold' }, formatter: (val) => val > 0 ? val : '' }
       } 
     },
+  }, darkBg);
+
+  if (barImg) ws.addImage(wb.addImage({base64:barImg,extension:'png'}), { tl:{col:0, row:8}, ext:{width:480,height:300} });
+  if (doughnutImg) ws.addImage(wb.addImage({base64:doughnutImg,extension:'png'}), { tl:{col:5, row:8}, ext:{width:450,height:300} });
+
+  // 5. TABLA: RESUMEN POR CUENTA
+  const startTable1 = 24;
+  ws.mergeCells(`A${startTable1}:J${startTable1}`);
+  ws.getCell(`A${startTable1}`).value = 'Resumen por cuenta';
+  ws.getCell(`A${startTable1}`).font = { bold:true, size:14, color:{argb:'FF1E3A8A'} };
+  ws.getRow(startTable1).height = 25;
+
+  const headers1 = ['Cuenta', 'OSAs', 'Equipos', 'Revisados', 'Base', 'AG-AS', 'QA', 'Global', 'Estado visual'];
+  headers1.forEach((h,i)=>{
+    const c = ws.getCell(startTable1+1, 1+i);
+    c.value = h; c.font = { bold:true, color:{argb:'FFFFFFFF'} };
+    c.fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FF1E3A8A'} };
+    c.alignment = { horizontal:'center', vertical:'middle' };
+    c.border = styleBorder;
   });
-
-  if (barImg) ws.addImage(wb.addImage({base64:barImg,extension:'png'}), { tl:{col:0, row:9}, ext:{width:650,height:325} });
-  if (doughnutImg) ws.addImage(wb.addImage({base64:doughnutImg,extension:'png'}), { tl:{col:6, row:9}, ext:{width:380,height:325} });
-
-  const start = 28;
-  ws.mergeCells(`A${start}:J${start}`);
-  ws.getCell(`A${start}`).value = 'RESUMEN DETALLADO POR CUENTA';
-  ws.getCell(`A${start}`).font = { bold:true, size:14, color:{argb: colorPrimary} };
-  ws.getRow(start).height = 25;
-
-  const headers = ['Cuenta', 'Avance', 'Meta', 'Brecha', 'Fase', 'Estado'];
-  headers.forEach((h,i)=>{
-    const c = ws.getCell(start+1, 1+i);
-    c.value = h; c.font = styleHeader.font; c.fill = styleHeader.fill; c.alignment = styleHeader.alignment; c.border = styleBorder;
-  });
-  ws.getRow(start+1).height = 25;
+  ws.getRow(startTable1+1).height = 25;
 
   accs.forEach((a,i)=>{
-    const r = start+2+i, g = calcGlobal(a), m = calcMeta(state.controlDate), gap = g-m, st = calcStatus(a);
+    const r = startTable1+2+i, g = calcGlobal(a), st = calcStatus(a);
     const row = ws.getRow(r);
     row.getCell(1).value = a.name;
-    row.getCell(2).value = g; row.getCell(2).numFmt = '0.0%';
-    row.getCell(3).value = m; row.getCell(3).numFmt = '0.0%';
-    row.getCell(4).value = gap; row.getCell(4).numFmt = '+0.0%;-0.0%;0.0%';
-    row.getCell(4).font = { color:{argb: gap<0?'FFDC2626':'FF16A34A'}, bold:true };
-    row.getCell(5).value = calcPhase(a);
-    row.getCell(6).value = st;
+    row.getCell(2).value = a.osas;
+    row.getCell(3).value = a.total;
+    row.getCell(4).value = a.reviewed;
+    row.getCell(5).value = pctBase(a); row.getCell(5).numFmt = '0%';
+    row.getCell(6).value = pctAGAS(a); row.getCell(6).numFmt = '0%';
+    row.getCell(7).value = pctQA(a); row.getCell(7).numFmt = '0%';
+    row.getCell(8).value = g; row.getCell(8).numFmt = '0%';
     
-    const cmap = { 'AL DÍA':'FFD1FAE5','ATRASO MENOR':'FFFEF3C7','ATRASO CRÍTICO':'FFFEE2E2','CRÍTICO':'FFFEE2E2',FINALIZADO:'FFCCFBF1','SIN DATOS':'FFF3F4F6' };
-    const fcolor = { 'AL DÍA':'FF065F46','ATRASO MENOR':'FF92400E','ATRASO CRÍTICO':'FF991B1B','CRÍTICO':'FF991B1B',FINALIZADO:'FF115E59','SIN DATOS':'FF374151' };
+    // Estado visual (Data bar)
+    row.getCell(9).value = g;
+    row.getCell(9).numFmt = '0%';
     
-    row.getCell(6).fill = { type:'pattern', pattern:'solid', fgColor:{argb:cmap[st]||'FFFFFFFF'} };
-    row.getCell(6).font = { bold:true, color:{argb: fcolor[st]||'FF000000'} };
-    row.getCell(6).alignment = { horizontal:'center' };
-    
-    for (let c=1; c<=6; c++) {
-        const cell = row.getCell(c);
-        cell.border = styleBorder;
-        if (i % 2 !== 0 && c !== 6) cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: colorLight } };
+    for (let c=1; c<=9; c++) {
+        row.getCell(c).border = styleBorder;
+        if (i % 2 !== 0) row.getCell(c).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF8FAFC' } };
     }
-    row.height = 22;
+    row.height = 20;
   });
 
-  /* ==================== HOJA 2: ACTUALIZAR AVANCE ==================== */
+  // Filtros y Barras de datos
+  ws.autoFilter = { from: `A${startTable1+1}`, to: `I${startTable1+1+accs.length}` };
+  ws.addConditionalFormatting({
+    ref: `I${startTable1+2}:I${startTable1+1+accs.length}`,
+    rules: [{ type: 'dataBar', color: { argb: 'FFDC2626' }, showValue: true, gradient: false }]
+  });
+
+  // 6. TABLA: HITOS Y METAS
+  const startTable2 = startTable1 + accs.length + 4;
+  ws.mergeCells(`A${startTable2}:J${startTable2}`);
+  ws.getCell(`A${startTable2}`).value = 'Hitos y metas';
+  ws.getCell(`A${startTable2}`).font = { bold:true, size:14, color:{argb:'FF1E3A8A'} };
+  ws.getRow(startTable2).height = 25;
+
+  const headers2 = ['Hito', 'Fecha', 'Meta acumulada', 'Resultado esperado', 'Situación visual'];
+  headers2.forEach((h,i)=>{
+    const c = ws.getCell(startTable2+1, 1+i);
+    c.value = h; c.font = { bold:true, color:{argb:'FFFFFFFF'} };
+    c.fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FF1E3A8A'} };
+    c.alignment = { horizontal:'center', vertical:'middle' };
+    c.border = styleBorder;
+  });
+  ws.getRow(startTable2+1).height = 25;
+
+  const hitosData = [
+    { name: 'Preparación', date: '30-10-2026', meta: '10%', exp: 'Responsables y volumen definidos: 2.220 equipos' },
+    { name: 'Inventario base', date: '06-11-2026', meta: '55%', exp: '55% Columnas A-AF completado' },
+    { name: 'Corte AG-AS', date: '13-11-2026', meta: '75%', exp: '75% Campos avanzados en desarrollo' },
+    { name: 'Cierre AG-AS', date: '20-11-2026', meta: '90%', exp: '90% Información avanzada validada' },
+    { name: 'QA', date: '27-11-2026', meta: '98%', exp: '98% Correcciones terminadas' },
+    { name: 'Cierre', date: '30-11-2026', meta: '100%', exp: '100% Inventarios consolidados' },
+  ];
+
+  hitosData.forEach((h, i) => {
+    const r = startTable2 + 2 + i;
+    const row = ws.getRow(r);
+    row.getCell(1).value = h.name;
+    row.getCell(2).value = h.date;
+    row.getCell(3).value = h.meta;
+    row.getCell(4).value = h.exp;
+    
+    let sit = 'PRÓXIMO';
+    let bgColor = 'FFFEF3C7'; // Amarillo
+    if (i === 0) { sit = 'CUMPLIDO'; bgColor = 'FFD1FAE5'; } // Verde
+    
+    row.getCell(5).value = sit;
+    row.getCell(5).fill = { type:'pattern', pattern:'solid', fgColor:{argb:bgColor} };
+    row.getCell(5).alignment = { horizontal:'center' };
+
+    for (let c=1; c<=5; c++) {
+        row.getCell(c).border = styleBorder;
+        if (i % 2 !== 0 && c !== 5) row.getCell(c).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF8FAFC' } };
+    }
+    row.height = 20;
+  });
+
+  ws.autoFilter = { from: `A${startTable2+1}`, to: `E${startTable2+1+hitosData.length}` };
+
+  /* ==================== HOJA 2: INVENTARIO DETALLADO ==================== */
   const wsA = wb.addWorksheet('Inventario Cuentas', { properties:{ tabColor:{argb:'FF16A34A'} } });
   wsA.columns = [
     {header:'Cuenta',key:'name',width:22},{header:'OSAs',key:'osas',width:8},{header:'Responsable',key:'responsible',width:24},
@@ -1391,16 +1462,16 @@ async function exportToExcel() {
   }));
 
   const hA = wsA.getRow(1);
-  hA.eachCell(c => { c.font = styleHeader.font; c.fill = styleHeader.fill; c.alignment = styleHeader.alignment; c.border = styleBorder; });
+  hA.eachCell(c => { c.font = {bold:true, color:{argb:'FFFFFFFF'}}; c.fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FF1E3A8A'} }; c.alignment = {horizontal:'center', vertical:'middle'}; c.border = styleBorder; });
   hA.height = 30;
   [9,10,11,12,14].forEach(c=>wsA.getColumn(c).numFmt = '0.0%');
   wsA.getColumn(15).numFmt = '+0.0%;-0.0%;0.0%';
   
   wsA.eachRow((row, r)=>{
     if (r===1) return;
-    row.eachCell((cell, colNumber) => {
+    row.eachCell((cell) => {
         cell.border = styleBorder;
-        if (r % 2 === 0) cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: colorLight } };
+        if (r % 2 === 0) cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF8FAFC' } };
     });
     const s = row.getCell(18);
     const cmap = { 'AL DÍA':'FFD1FAE5','ATRASO MENOR':'FFFEF3C7','ATRASO CRÍTICO':'FFFEE2E2','CRÍTICO':'FFFEE2E2',FINALIZADO:'FFCCFBF1','SIN DATOS':'FFF3F4F6' };
@@ -1411,16 +1482,7 @@ async function exportToExcel() {
 
   wsA.addConditionalFormatting({
     ref: `L2:L${accs.length + 1}`,
-    rules: [
-      {
-        type: 'dataBar',
-        minLength: 0,
-        maxLength: 100,
-        color: { argb: 'FF2563EB' },
-        showValue: true,
-        gradient: true
-      }
-    ]
+    rules: [{ type: 'dataBar', color: { argb: 'FF2563EB' }, showValue: true, gradient: true }]
   });
   
   wsA.views = [{ state:'frozen', ySplit:1 }];
@@ -1442,14 +1504,14 @@ async function exportToExcel() {
     }));
     
     const hR = wsR.getRow(1);
-    hR.eachCell(c => { c.font = styleHeader.font; c.fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FFDC2626'} }; c.alignment = styleHeader.alignment; c.border = styleBorder; });
+    hR.eachCell(c => { c.font = {bold:true, color:{argb:'FFFFFFFF'}}; c.fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FFDC2626'} }; c.alignment = {horizontal:'center', vertical:'middle'}; c.border = styleBorder; });
     hR.height = 30;
 
     wsR.eachRow((row, r) => {
         if (r===1) return;
         row.eachCell((cell) => {
             cell.border = styleBorder;
-            if (r % 2 === 0) cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: colorLight } };
+            if (r % 2 === 0) cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF8FAFC' } };
         });
         const semCell = row.getCell(11);
         const s = semCell.value;
@@ -1475,7 +1537,7 @@ async function exportToExcel() {
     state.history.forEach(h=>wsH.addRow(h));
     
     const hH = wsH.getRow(1);
-    hH.eachCell(c => { c.font = styleHeader.font; c.fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FFF59E0B'} }; c.alignment = styleHeader.alignment; c.border = styleBorder; });
+    hH.eachCell(c => { c.font = {bold:true, color:{argb:'FFFFFFFF'}}; c.fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FFF59E0B'} }; c.alignment = {horizontal:'center', vertical:'middle'}; c.border = styleBorder; });
     hH.height = 30;
     [9,10,11,12].forEach(c=>wsH.getColumn(c).numFmt = '0.0%');
     
@@ -1483,7 +1545,7 @@ async function exportToExcel() {
         if (r===1) return;
         row.eachCell((cell) => {
             cell.border = styleBorder;
-            if (r % 2 === 0) cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: colorLight } };
+            if (r % 2 === 0) cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF8FAFC' } };
         });
         row.height = 22;
     });
@@ -1493,7 +1555,7 @@ async function exportToExcel() {
 
   const buf = await wb.xlsx.writeBuffer();
   download(new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}), `MPS_Ejecutivo_${new Date().toISOString().slice(0,10)}.xlsx`);
-  toast('✓ Excel Ejecutivo exportado');
+  toast('✓ Excel Ejecutivo Premium exportado');
 }
 
 /* ========== UTILS ========== */
