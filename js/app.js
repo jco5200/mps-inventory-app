@@ -1214,14 +1214,266 @@ function renderSettings(app) {
   });
 }
 
-/* ========== EXPORTAR EXCEL (DISEÑO EJECUTIVO AVANZADO) ========== */
-function generateChartImage(config, bgColor = '#ffffff') {
+/* ---------- CRONOGRAMA ---------- */
+function renderSchedule(app) {
+  app.innerHTML = `<div class="card">
+    <h2>Cronograma semanal y pauta de ejecución</h2>
+    <p class="help">Plan detallado para coordinar a los OSAs, supervisar entregables y conducir las reuniones.</p>
+    <div class="table-wrap" style="margin-top:16px"><table>
+      <thead><tr>
+        <th>Semana</th><th>Periodo</th><th>Fase principal</th>
+        <th style="min-width:180px">Actividades del OSA</th>
+        <th style="min-width:180px">Actividad del supervisor</th>
+        <th style="min-width:150px">Entregable esperado</th>
+        <th>Meta acum.</th>
+        <th style="min-width:150px">Evidencia requerida</th>
+        <th style="min-width:150px">Riesgo a controlar</th>
+        <th>Reunión / control</th>
+        <th>Responsable</th>
+        <th>Estado</th>
+      </tr></thead>
+      <tbody>
+        ${SCHEDULE.map(s=>`<tr>
+          <td><strong>${s.week}</strong></td>
+          <td>${s.period}</td>
+          <td>${s.phase}</td>
+          <td style="font-size:12px;color:var(--gray-600)">${s.osaAction}</td>
+          <td style="font-size:12px;color:var(--gray-600)">${s.supAction}</td>
+          <td style="font-size:12px;color:var(--gray-600)">${s.deliverable}</td>
+          <td><span class="badge badge-sin-fecha" style="background:var(--primary);color:#fff">${fmtPct(s.meta)}</span></td>
+          <td style="font-size:12px;color:var(--gray-600)">${s.evidence}</td>
+          <td style="font-size:12px;color:var(--danger)">${s.risk}</td>
+          <td><span style="font-size:12px;font-weight:600;white-space:nowrap">${s.meeting}</span></td>
+          <td style="font-size:12px;white-space:nowrap">${s.responsible}</td>
+          <td><span class="badge ${s.status==='Completado'?'badge-verde':s.status==='En curso'?'badge-ambar':'badge-sin-fecha'}">${s.status}</span></td>
+        </tr>`).join('')}
+      </tbody>
+    </table></div>
+  </div>`;
+}
+
+/* ---------- RESPALDOS ---------- */
+async function renderBackups(app) {
+  const status = getBackupStatus();
+  const snapshots = await dbAll(STORE_SNAPSHOTS);
+  const recent = snapshots.slice(-20).reverse();
+  const hasFile = !!fileHandle;
+
+  app.innerHTML = `
+    <div class="backup-hero">
+      <h2>🛡 Sistema de respaldo</h2>
+      <p>5 capas de protección. Nunca pierdas el avance del proyecto.</p>
+      <div class="backup-grid">
+        <div class="backup-card ok"><div class="label">Capa 1 · localStorage</div><div class="value">✓ Activo</div></div>
+        <div class="backup-card ok"><div class="label">Capa 2 · IndexedDB</div><div class="value">✓ Activo</div></div>
+        <div class="backup-card ok"><div class="label">Capa 3 · Snapshots</div><div class="value">${snapshots.length} versiones</div></div>
+        <div class="backup-card ${hasFile?'ok':'warn'}"><div class="label">Capa 4 · Carpeta disco</div><div class="value">${hasFile?'✓ Configurada':'⚠ No configurada'}</div></div>
+        <div class="backup-card ok"><div class="label">Capa 5 · Descarga JSON</div><div class="value">✓ Disponible</div></div>
+      </div>
+    </div>
+    <div class="card" style="border-left:4px solid var(--${status.level === 'ok' ? 'success' : status.level === 'warn' ? 'warning' : 'danger'})">
+      <h2>${status.level === 'ok' ? '✓' : status.level === 'warn' ? '⚠' : '🔴'} Estado del respaldo</h2>
+      <p class="help">${status.long}</p>
+      ${!hasFile ? `
+        <div style="margin-top:16px;padding:16px;background:#fffbeb;border-radius:8px">
+          <h3 style="color:#92400e;margin-bottom:8px">Recomendación fuerte</h3>
+          <p style="font-size:13px;color:#78350f;margin-bottom:12px">Configurá una carpeta dentro de <strong>OneDrive</strong>, <strong>Google Drive</strong> o <strong>Dropbox</strong>. La app guardará el archivo <code>mps_backup.json</code> cada 5 minutos, y tu nube lo sincronizará solo.</p>
+          <button class="btn btn-primary" id="btnPickFolder">📁 Elegir carpeta de respaldo</button>
+        </div>
+      ` : `<div style="margin-top:16px;padding:12px;background:#f0fdf4;border-radius:8px;font-size:13px;color:#065f46"><strong>✓ Carpeta activa.</strong> ${state._lastFileSave ? `Último: ${new Date(state._lastFileSave).toLocaleString()}` : ''}</div>`}
+    </div>
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px">
+        <div><h2>Máquina del tiempo · ${snapshots.length} versiones</h2><p class="help">Podés volver a cualquier versión anterior. Nada se sobrescribe.</p></div>
+        <div style="display:flex;gap:8px">
+          <button class="btn" id="btnExportNow">⬇ Descargar JSON ahora</button>
+          <button class="btn btn-primary" id="btnImportRestore">⬆ Restaurar desde archivo</button>
+        </div>
+      </div>
+      ${recent.length === 0 ? '<div class="empty">Aún no hay versiones guardadas.</div>' : `
+      <div class="snapshot-list">
+        ${recent.map(s => {
+          const accCount = s.state.accounts ? s.state.accounts.length : 0;
+          return `<div class="snapshot-item">
+            <div><div class="snapshot-date">${new Date(s.date).toLocaleString('es-CL')}</div><div class="snapshot-meta">${accCount} cuentas · ${s.state.history?.length || 0} cortes</div></div>
+            <div style="text-align:right"><div class="snapshot-meta">ID</div><div style="font-family:monospace;font-size:11px">#${s.id}</div></div>
+            <button class="btn btn-sm" data-restore="${s.id}">Restaurar</button>
+            <button class="btn-del-snap" data-del-snap="${s.id}" title="Eliminar respaldo">🗑️ Eliminar</button>
+          </div>`;
+        }).join('')}
+      </div>`}
+    </div>
+  `;
+
+  document.getElementById('btnPickFolder')?.addEventListener('click', pickBackupFolder);
+  document.getElementById('btnExportNow')?.addEventListener('click', () => {
+    const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' });
+    download(blob, `mps_backup_${new Date().toISOString().slice(0, 10)}_${Date.now()}.json`);
+    toast('✓ JSON descargado');
+  });
+  document.getElementById('btnImportRestore')?.addEventListener('click', () => {
+    const input = document.createElement('input');
+    input.type = 'file'; input.accept = '.json';
+    input.onchange = async e => {
+      const f = e.target.files[0]; if (!f) return;
+      const txt = await f.text();
+      try {
+        const data = JSON.parse(txt);
+        if (!data.accounts) throw new Error('Formato inválido');
+        if (!confirm('¿Reemplazar TODOS los datos actuales? La versión actual quedará en el historial.')) return;
+        await addSnapshot(state); state = data; await dbPut(STORE_CURRENT, 'current', state); saveState(); toast('✓ Datos restaurados'); render();
+      } catch (err) { toast('Error: ' + err.message); }
+    };
+    input.click();
+  });
+  app.querySelectorAll('[data-restore]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const id = +btn.dataset.restore; const snap = snapshots.find(s => s.id === id);
+      if (!snap) return;
+      if (!confirm(`¿Restaurar al estado del ${new Date(snap.date).toLocaleString()}? La versión actual se conservará.`)) return;
+      await addSnapshot(state); state = JSON.parse(JSON.stringify(snap.state)); await dbPut(STORE_CURRENT, 'current', state); saveState(); toast('✓ Restaurado'); render();
+    });
+  });
+  app.querySelectorAll('[data-del-snap]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const id = +btn.dataset.delSnap;
+      if (!confirm('¿Eliminar este respaldo permanentemente?')) return;
+      await dbDelete(STORE_SNAPSHOTS, id);
+      render();
+      toast('Respaldo eliminado');
+    });
+  });
+}
+
+/* ---------- INSTRUCCIONES ---------- */
+function renderInstructions(app) {
+  app.innerHTML = `
+    <div class="card">
+      <h2>📖 Guía del Sistema · Control Proyecto Inventarios MPS 2026</h2>
+      <p class="help" style="margin-bottom:20px">Esta guía detalla el objetivo del proyecto, la función de cada pestaña y el procedimiento paso a paso para que cualquier persona pueda operar la aplicación sin depender de un experto.</p>
+
+      <div class="instruction-step" style="border-left-color: #2563eb;">
+        <h4>Objetivo del Proyecto</h4>
+        <p>Este sistema controla la implementación del nuevo formato de inventario en las 12 cuentas del área MPS (Servicio de Impresión Gestionado). Cada OSA (Operador de Servicio) completa su archivo individual de inventario. El supervisor (tú) actualiza este control en las reuniones de seguimiento, registra bloqueos y presenta el avance al mandante.</p>
+        <p><strong>Cierre comprometido:</strong> 30-11-2026.</p>
+      </div>
+
+      <div class="instruction-step">
+        <h4>¿Qué hace cada parte del sitio?</h4>
+        <ul>
+          <li><strong>Dashboard:</strong> Vista ejecutiva. Muestra los KPIs (tarjetas), gráficos de avance vs meta, distribución de estados y los hitos del proyecto. No se edita manualmente; se alimenta de las demás pestañas.</li>
+          <li><strong>Plan Semanal:</strong> Te indica en qué semana del cronograma estás, cuál es el foco actual (ej: Levantamiento A-AF) y te muestra las reuniones prioritarias ordenadas por criticidad (las rojas primero).</li>
+          <li><strong>Inventario Cuentas:</strong> Es la hoja principal de carga. Aquí ingresas los datos de cada cuenta (Total equipos, Revisados, Base A-AF, AG-AS y QA), registras bloqueos y observaciones.</li>
+          <li><strong>Gantt:</strong> Muestra la línea de tiempo comprometida para cada cuenta y fase, con vista de días para ver la evolución temporal.</li>
+          <li><strong>Acuerdos y Riesgos:</strong> Registro formal de bloqueos, decisiones y compromisos. Cada registro tiene un responsable y una fecha de vencimiento con semáforo automático.</li>
+          <li><strong>Historial:</strong> Conserva una "foto" (snapshot) del avance de cada cuenta en cada reunión. Permite reconstruir la evolución semanal.</li>
+          <li><strong>Cronograma:</strong> Pauta detallada de las actividades esperadas por semana, entregables, evidencias y riesgos a controlar.</li>
+          <li><strong>Respaldos:</strong> Sistema de 5 capas de seguridad (LocalStorage, IndexedDB, Snapshots, Carpeta Local y Descarga JSON) para no perder nunca la información.</li>
+          <li><strong>Configuración:</strong> Ajustes de la fecha de control, exportación de datos y reinicio del sistema.</li>
+        </ul>
+      </div>
+
+      <div class="instruction-step" style="border-left-color: #16a34a;">
+        <h4>Reglas del Semáforo (Estados)</h4>
+        <p>El estado se calcula automáticamente según el avance global vs la meta a la fecha:</p>
+        <ul>
+          <li><span class="badge badge-verde">AL DÍA</span> Cumple o supera la meta correspondiente a la fecha de control.</li>
+          <li><span class="badge badge-ambar">ATRASO MENOR</span> Está hasta 10 puntos porcentuales por debajo de la meta.</li>
+          <li><span class="badge badge-rojo">ATRASO CRÍTICO</span> Está a más de 10 puntos por debajo de la meta o posee un bloqueo crítico.</li>
+          <li><span class="badge badge-finalizado">FINALIZADO</span> El avance global ha llegado al 100%.</li>
+          <li><span class="badge badge-sin-fecha">SIN DATOS</span> No hay información cargada para esa cuenta.</li>
+        </ul>
+        <p><em>El avance global se calcula con la ponderación: 45% Base A-AF + 35% AG-AS + 20% QA.</em></p>
+      </div>
+
+      <div class="instruction-step">
+        <h4>Cómo actualizar el libro en menos de 5 minutos</h4>
+        <p><strong>Opción A: Registro Manual (Reunión con el OSA)</strong></p>
+        <ol style="padding-left: 24px; font-size: 14px; color: var(--gray-700); margin-bottom: 16px;">
+          <li>Ve a <strong>Plan Semanal</strong> (o <strong>Inventario Cuentas</strong>) y haz clic en la fila/tarjeta de la cuenta que vas a revisar.</li>
+          <li>En la ventana que se abre, ingresa las cantidades exactas dictadas por el OSA (Total, Revisados, Base, AG-AS, QA).</li>
+          <li>Si hay un bloqueo, márcalo y describe la próxima acción, responsable y fecha compromiso.</li>
+          <li>Haz clic en <strong>"Guardar corte de esta cuenta"</strong>. Los porcentajes y el semáforo se calculan solos.</li>
+        </ol>
+        <p><strong>Opción B: Carga desde Excel del OSA</strong></p>
+        <ol style="padding-left: 24px; font-size: 14px; color: var(--gray-700);">
+          <li>Ve a <strong>Inventario Cuentas</strong> y haz clic en <strong>"📂 Importar Excel de OSA"</strong>.</li>
+          <li>Selecciona el archivo del OSA. El sistema contará automáticamente cuántos equipos tienen la Base (32 columnas) y AG-AS (13 columnas) completas.</li>
+          <li>💡 <strong>Truco:</strong> Si el archivo incluye el nombre de la cuenta en su nombre (ej: <em>FASA_Inventario_Octubre.xlsx</em>), el sistema <strong>seleccionará la cuenta automáticamente</strong>. De lo contrario, elígela manualmente del menú desplegable y haz clic en Aplicar.</li>
+        </ol>
+      </div>
+
+      <div class="instruction-step" style="border-left-color: #f59e0b;">
+        <h4>Controles antes de presentar al mandante</h4>
+        <p>Antes de guardar el corte semanal y exportar a Excel, asegúrate de:</p>
+        <ul>
+          <li>✓ Confirmar que todas las cuentas tengan la fecha de último reporte actualizada.</li>
+          <li>✓ Validar que "Equipos revisados" no supere el "Total equipos".</li>
+          <li>✓ Revisar que no haya celdas rojas sin justificación en las observaciones.</li>
+          <li>✓ Verificar que cada bloqueo tenga próxima acción, responsable y fecha compromiso.</li>
+          <li>✓ Usar la Gantt como planificación y el Dashboard/Inventario Cuentas como evidencia del avance real.</li>
+          <li>✓ Guardar el corte en Historial y descargar el Excel para enviar por correo.</li>
+        </ul>
+      </div>
+    </div>
+  `;
+}
+
+/* ---------- SETTINGS ---------- */
+function renderSettings(app) {
+  app.innerHTML = `<div class="card">
+    <h2>Configuración y respaldo</h2>
+    <div class="form-grid" style="margin-bottom:20px">
+      <div><label>Fecha de control</label><input type="date" id="setControlDate" value="${state.controlDate}"><p class="help">Cambiala para simular semanas futuras.</p></div>
+    </div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap">
+      <button class="btn btn-primary" id="btnExportJSON">⬇ Exportar JSON</button>
+      <button class="btn" id="btnImportJSON">⬆ Importar JSON</button>
+      <button class="btn" id="btnExportCSV">⬇ Exportar CSV</button>
+      <button class="btn btn-danger" id="btnReset">🔄 Reiniciar todo</button>
+    </div>
+    <input type="file" id="fileImport" accept="application/json" hidden>
+  </div>`;
+
+  document.getElementById('setControlDate').addEventListener('change',e=>{
+    state.controlDate = e.target.value; saveState();
+    toast('Fecha de control actualizada'); render();
+  });
+  document.getElementById('btnExportJSON').addEventListener('click',()=>{
+    const blob = new Blob([JSON.stringify(state,null,2)],{type:'application/json'});
+    download(blob, `mps_backup_${new Date().toISOString().slice(0,10)}.json`);
+  });
+  document.getElementById('btnImportJSON').addEventListener('click',()=>document.getElementById('fileImport').click());
+  document.getElementById('fileImport').addEventListener('change',e=>{
+    const f = e.target.files[0]; if (!f) return;
+    const r = new FileReader();
+    r.onload = ev => {
+      try { const d = JSON.parse(ev.target.result); if (!d.accounts) throw new Error('Formato inválido');
+        state = d; saveState(); render(); toast('Datos importados correctamente');
+      } catch (err) { alert('Error: ' + err.message); }
+    };
+    r.readAsText(f);
+  });
+  document.getElementById('btnExportCSV').addEventListener('click',()=>{
+    const h = ['Cuenta','OSAs','Responsable','Total','Revisados','Base ok','AG-AS ok','QA ok','%Base','%AG-AS','%QA','Global','Fecha','Meta','Estado'];
+    const rows = state.accounts.map(a=>[a.name,a.osas,a.responsible,a.total,a.reviewed,a.baseCount,a.agasCount,a.qaCount,
+      fmtPct(pctBase(a)),fmtPct(pctAGAS(a)),fmtPct(pctQA(a)),fmtPct(calcGlobal(a)),a.updateDate,fmtPct(calcMeta(state.controlDate)),calcStatus(a)]);
+    const csv = [h,...rows].map(r=>r.join(',')).join('\n');
+    download(new Blob([csv],{type:'text/csv'}), 'mps_cuentas.csv');
+  });
+  document.getElementById('btnReset').addEventListener('click',()=>{
+    if (!confirm('Se borrarán TODOS los datos. ¿Continuar?')) return;
+    state = getInitialState(); saveState(); render(); toast('Sistema reiniciado');
+  });
+}
+
+/* ========== EXPORTAR EXCEL (DISEÑO EJECUTIVO) ========== */
+function generateChartImage(config) {
   if (typeof Chart === 'undefined') return null;
   const c = document.createElement('canvas');
   c.width = 900; c.height = 450;
   const ctx = c.getContext('2d');
-  ctx.fillStyle = bgColor; 
-  ctx.fillRect(0,0,c.width,c.height);
+  ctx.fillStyle = '#ffffff'; ctx.fillRect(0,0,c.width,c.height);
   const chart = new Chart(c, config);
   const url = c.toDataURL('image/png', 1.0);
   chart.destroy();
@@ -1230,12 +1482,11 @@ function generateChartImage(config, bgColor = '#ffffff') {
 
 async function exportToExcel() {
   if (typeof ExcelJS === 'undefined') { toast('ExcelJS no cargado'); return; }
-  toast('Generando Excel Ejecutivo Premium...');
+  toast('Generando Excel Ejecutivo Dinámico...');
   
   const accs = state.accounts;
   const totalOSAs = accs.reduce((s,a)=>s+(+a.osas||0),0);
   const avgProgress = accs.reduce((s,a)=>s+calcGlobal(a),0)/accs.length;
-  const totalReviewed = accs.reduce((s,a)=>s+(+a.reviewed||0),0);
   
   const counts = { FINALIZADO:0, 'AL DÍA':0, 'ATRASO MENOR':0, 'ATRASO CRÍTICO':0, 'CRÍTICO':0, 'SIN DATOS':0 };
   accs.forEach(a=>counts[calcStatus(a)]++);
@@ -1244,7 +1495,17 @@ async function exportToExcel() {
   wb.creator = 'Control Proyecto Inventarios MPS 2026';
   wb.created = new Date();
 
-  const colorBorder = 'FFE2E8F0';
+  const colorPrimary = 'FF1E3A8A'; // Azul oscuro ejecutivo
+  const colorLight = 'FFF8FAFC';   // Gris muy claro
+  const colorBorder = 'FFE2E8F0';  // Gris borde
+
+  const styleHeader = {
+    font: { bold: true, color: { argb: 'FFFFFFFF' }, size: 11 },
+    fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: colorPrimary } },
+    alignment: { vertical: 'middle', horizontal: 'center' },
+    border: { top: { style: 'thin', color: { argb: colorPrimary } }, bottom: { style: 'thin', color: { argb: colorPrimary } } }
+  };
+  
   const styleBorder = {
     top: { style: 'thin', color: { argb: colorBorder } },
     left: { style: 'thin', color: { argb: colorBorder } },
@@ -1252,198 +1513,119 @@ async function exportToExcel() {
     right: { style: 'thin', color: { argb: colorBorder } }
   };
 
-  /* ==================== HOJA DASHBOARD ==================== */
-  const ws = wb.addWorksheet('Dashboard', { views:[{showGridLines:false}], properties:{ tabColor:{argb:'FF1E3A8A'} } });
-  // Ajustar anchos de columna (10 columnas en total para simetría)
+  /* ==================== HOJA 1: DASHBOARD EJECUTIVO ==================== */
+  const ws = wb.addWorksheet('Dashboard', { views:[{showGridLines:false}], properties:{ tabColor:{argb: colorPrimary} } });
   ws.columns = [{width:14},{width:14},{width:14},{width:14},{width:14},{width:14},{width:14},{width:14},{width:14},{width:14}];
 
-  // 1. TÍTULO PRINCIPAL
   ws.mergeCells('A1:J2');
-  const titleCell = ws.getCell('A1');
-  titleCell.value = 'DASHBOARD EJECUTIVO DEL PROYECTO';
-  titleCell.font = { bold:true, size:20, color:{argb:'FFFFFFFF'} };
-  titleCell.fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FF1E3A8A'} };
-  titleCell.alignment = { horizontal:'left', vertical:'middle', indent: 1 };
-  ws.getRow(1).height = 30; ws.getRow(2).height = 30;
+  const t = ws.getCell('A1');
+  t.value = 'DASHBOARD EJECUTIVO · CONTROL INVENTARIOS MPS 2026';
+  t.font = { bold:true, size:18, color:{argb:'FFFFFFFF'} };
+  t.fill = { type:'pattern', pattern:'solid', fgColor:{argb: colorPrimary} };
+  t.alignment = { horizontal:'center', vertical:'middle' };
+  ws.getRow(1).height = 35; ws.getRow(2).height = 35;
 
-  // 2. SUBTÍTULO
   ws.mergeCells('A3:J3');
-  const subCell = ws.getCell('A3');
-  subCell.value = 'Área MPS / Seguimiento de 12 cuentas / Cierre comprometido: 30-11-2026';
-  subCell.font = { italic:true, size:11, color:{argb:'FF1E3A8A'} };
-  subCell.fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FFE0F2FE'} };
-  subCell.alignment = { horizontal:'left', vertical:'middle', indent: 1 };
+  ws.getCell('A3').value = `Cierre: 30-11-2026 · Generado: ${new Date().toLocaleString('es-CL')} · Fecha control: ${state.controlDate}`;
+  ws.getCell('A3').font = { italic:true, size:10, color:{argb:'FF64748B'} };
+  ws.getCell('A3').alignment = { horizontal:'center', vertical:'middle' };
   ws.getRow(3).height = 25;
 
-  // 3. TARJETAS KPI
   const kpis = [
-    {label:'CUENTAS', value: 12, col: 1, bg: 'FF0D9488'}, // Teal
-    {label:'OSAs', value: totalOSAs, col: 3, bg: 'FF2563EB'}, // Blue
-    {label:'AVANCE PROMEDIO', value: avgProgress, col: 5, bg: 'FF7C3AED', pct: true}, // Purple
-    {label:'CUENTAS EN ROJO', value: counts['ATRASO CRÍTICO']+counts['CRÍTICO'], col: 7, bg: 'FFDC2626'}, // Red
-    {label:'EQUIPOS REVISADOS', value: totalReviewed, col: 9, bg: 'FF16A34A'}, // Green
+    {label:'Cuentas Totales', value: 12, col: 1, color: 'FF1E3A8A'},
+    {label:'OSAs Asignados', value: totalOSAs, col: 3, color: 'FF1E3A8A'},
+    {label:'Avance Promedio', value: avgProgress, col: 5, color: 'FF16A34A', pct: true},
+    {label:'Al Día / Finalizadas', value: counts['AL DÍA']+counts.FINALIZADO, col: 7, color: 'FF16A34A'},
+    {label:'Atraso Crítico', value: counts['ATRASO CRÍTICO']+counts['CRÍTICO'], col: 9, color: 'FFDC2626'},
   ];
 
   kpis.forEach(k => {
-    ws.mergeCells(5, k.col, 5, k.col + 1);
-    const hCell = ws.getCell(5, k.col);
-    hCell.value = k.label;
-    hCell.font = { bold: true, size: 10, color: { argb: 'FFFFFFFF' } };
-    hCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: k.bg } };
-    hCell.alignment = { vertical: 'middle', horizontal: 'center' };
+    ws.mergeCells(5, k.col, 6, k.col + 1);
+    const cell = ws.getCell(5, k.col);
+    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: colorLight } };
+    cell.border = { top: { style: 'thick', color: { argb: k.color } }, left: styleBorder.left, right: styleBorder.right, bottom: styleBorder.bottom };
+    cell.alignment = { vertical: 'middle', horizontal: 'center' };
+    cell.value = k.pct ? fmtPct(k.value) : k.value;
+    cell.font = { bold: true, size: 20, color: { argb: 'FF1E293B' } };
     
-    ws.mergeCells(6, k.col, 6, k.col + 1);
-    const vCell = ws.getCell(6, k.col);
-    vCell.value = k.pct ? fmtPct(k.value) : k.value;
-    vCell.font = { bold: true, size: 22, color: { argb: 'FF1E293B' } };
-    vCell.alignment = { vertical: 'middle', horizontal: 'center' };
-    vCell.border = { top: { style: 'thin', color: { argb: k.bg } }, left: styleBorder.left, right: styleBorder.right, bottom: styleBorder.bottom };
+    const labelCell = ws.getCell(7, k.col);
+    ws.mergeCells(7, k.col, 7, k.col + 1);
+    labelCell.value = k.label;
+    labelCell.font = { size: 10, bold: true, color: { argb: 'FF64748B' } };
+    labelCell.alignment = { horizontal: 'center' };
   });
-  ws.getRow(5).height = 20; ws.getRow(6).height = 35;
-
-  // 4. GRÁFICOS (Fondo Oscuro y Etiquetas)
-  const chartTextColor = '#ffffff';
-  const chartGridColor = '#374151';
-  const darkBg = '#1f2937';
 
   const barImg = generateChartImage({
     type:'bar',
     data:{ labels:accs.map(a=>a.name), datasets:[
-      { label:'% Avance', data:accs.map(a=>+(calcGlobal(a)*100).toFixed(1)), backgroundColor:['#06b6d4','#f43f5e','#8b5cf6','#f59e0b','#10b981','#3b82f6','#6366f1','#ec4899','#14b8a6','#f97316','#ef4444','#06b6d4'], borderRadius:4 }
+      { label:'Avance', data:accs.map(a=>+(calcGlobal(a)*100).toFixed(1)), backgroundColor:'#2563eb', borderRadius:4 },
+      { label:'Meta', data:accs.map(()=>+(calcMeta(state.controlDate)*100).toFixed(1)), backgroundColor:'#cbd5e1', borderRadius:4 },
     ]},
     options:{ responsive:false, animation:false, 
       plugins:{ 
-        title:{display:true,text:'Avance global por cuenta', font:{size:16, weight:'bold', color: chartTextColor}}, 
-        legend:{display:false},
-        datalabels: { display: true, anchor: 'end', align: 'top', formatter: (val) => val + '%', font: { size: 10, weight: 'bold' }, color: chartTextColor }
+        title:{display:true,text:'Avance vs Meta por cuenta',font:{size:16,weight:'bold'}}, 
+        legend:{position:'bottom'},
+        datalabels: { display: true, anchor: 'end', align: 'top', formatter: (val) => val > 0 ? val + '%' : '', font: { size: 10, weight: 'bold' }, color: '#333' }
       }, 
-      scales:{ 
-        x:{ ticks:{color: chartTextColor}, grid:{display:false} },
-        y:{ beginAtZero:true, max:100, ticks:{color: chartTextColor, callback:v=>v+'%'}, grid:{color: chartGridColor} } 
-      } 
+      scales:{ y:{ beginAtZero:true, max:100, grid:{color:'#f1f5f9'} } } 
     },
-  }, darkBg);
-  
-  // Calcular datos para el gráfico de hitos
-  let hitosCumplidos = 1; // Preparación
-  let hitosProximos = 5;  // El resto
-  let hitosPendientes = 0;
-  if (avgProgress < 0.10) { hitosCumplidos = 0; hitosProximos = 6; }
+  });
   
   const doughnutImg = generateChartImage({
     type:'doughnut',
-    data:{ labels:['Cumplidos','Próximos','Pendientes'], datasets:[{ data:[hitosCumplidos, hitosProximos, hitosPendientes], backgroundColor:['#a3e635','#3b82f6','#ef4444'] }]},
-    options:{ responsive:false, animation:false, cutout: '65%',
+    data:{ labels:['Al día','Atraso menor','Atraso crítico','Finalizado','Sin datos'], datasets:[{ data:[counts['AL DÍA'],counts['ATRASO MENOR'],counts['ATRASO CRÍTICO']+counts['CRÍTICO'],counts.FINALIZADO,counts['SIN DATOS']], backgroundColor:['#16a34a','#f59e0b','#dc2626','#0d9488','#cbd5e1'] }]},
+    options:{ responsive:false, animation:false, 
       plugins:{ 
-        title:{display:true,text:'Estado de hitos y metas', font:{size:16, weight:'bold', color: chartTextColor}}, 
-        legend:{position:'right', labels: {color: chartTextColor}},
-        datalabels: { display: true, color: chartTextColor, font: { size: 12, weight: 'bold' }, formatter: (val) => val > 0 ? val : '' }
+        title:{display:true,text:'Distribución de estados',font:{size:16,weight:'bold'}}, 
+        legend:{position:'bottom'},
+        datalabels: { display: true, color: '#fff', font: { size: 12, weight: 'bold' }, formatter: (val) => val > 0 ? val : '' }
       } 
     },
-  }, darkBg);
-
-  if (barImg) ws.addImage(wb.addImage({base64:barImg,extension:'png'}), { tl:{col:0, row:8}, ext:{width:480,height:300} });
-  if (doughnutImg) ws.addImage(wb.addImage({base64:doughnutImg,extension:'png'}), { tl:{col:5, row:8}, ext:{width:450,height:300} });
-
-  // 5. TABLA: RESUMEN POR CUENTA
-  const startTable1 = 24;
-  ws.mergeCells(`A${startTable1}:J${startTable1}`);
-  ws.getCell(`A${startTable1}`).value = 'Resumen por cuenta';
-  ws.getCell(`A${startTable1}`).font = { bold:true, size:14, color:{argb:'FF1E3A8A'} };
-  ws.getRow(startTable1).height = 25;
-
-  const headers1 = ['Cuenta', 'OSAs', 'Equipos', 'Revisados', 'Base', 'AG-AS', 'QA', 'Global', 'Estado visual'];
-  headers1.forEach((h,i)=>{
-    const c = ws.getCell(startTable1+1, 1+i);
-    c.value = h; c.font = { bold:true, color:{argb:'FFFFFFFF'} };
-    c.fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FF1E3A8A'} };
-    c.alignment = { horizontal:'center', vertical:'middle' };
-    c.border = styleBorder;
   });
-  ws.getRow(startTable1+1).height = 25;
+
+  if (barImg) ws.addImage(wb.addImage({base64:barImg,extension:'png'}), { tl:{col:0, row:9}, ext:{width:650,height:325} });
+  if (doughnutImg) ws.addImage(wb.addImage({base64:doughnutImg,extension:'png'}), { tl:{col:6, row:9}, ext:{width:380,height:325} });
+
+  const start = 28;
+  ws.mergeCells(`A${start}:J${start}`);
+  ws.getCell(`A${start}`).value = 'RESUMEN DETALLADO POR CUENTA';
+  ws.getCell(`A${start}`).font = { bold:true, size:14, color:{argb: colorPrimary} };
+  ws.getRow(start).height = 25;
+
+  const headers = ['Cuenta', 'Avance', 'Meta', 'Brecha', 'Fase', 'Estado'];
+  headers.forEach((h,i)=>{
+    const c = ws.getCell(start+1, 1+i);
+    c.value = h; c.font = styleHeader.font; c.fill = styleHeader.fill; c.alignment = styleHeader.alignment; c.border = styleBorder;
+  });
+  ws.getRow(start+1).height = 25;
 
   accs.forEach((a,i)=>{
-    const r = startTable1+2+i, g = calcGlobal(a), st = calcStatus(a);
+    const r = start+2+i, g = calcGlobal(a), m = calcMeta(state.controlDate), gap = g-m, st = calcStatus(a);
     const row = ws.getRow(r);
     row.getCell(1).value = a.name;
-    row.getCell(2).value = a.osas;
-    row.getCell(3).value = a.total;
-    row.getCell(4).value = a.reviewed;
-    row.getCell(5).value = pctBase(a); row.getCell(5).numFmt = '0%';
-    row.getCell(6).value = pctAGAS(a); row.getCell(6).numFmt = '0%';
-    row.getCell(7).value = pctQA(a); row.getCell(7).numFmt = '0%';
-    row.getCell(8).value = g; row.getCell(8).numFmt = '0%';
+    row.getCell(2).value = g; row.getCell(2).numFmt = '0.0%';
+    row.getCell(3).value = m; row.getCell(3).numFmt = '0.0%';
+    row.getCell(4).value = gap; row.getCell(4).numFmt = '+0.0%;-0.0%;0.0%';
+    row.getCell(4).font = { color:{argb: gap<0?'FFDC2626':'FF16A34A'}, bold:true };
+    row.getCell(5).value = calcPhase(a);
+    row.getCell(6).value = st;
     
-    // Estado visual (Data bar)
-    row.getCell(9).value = g;
-    row.getCell(9).numFmt = '0%';
+    const cmap = { 'AL DÍA':'FFD1FAE5','ATRASO MENOR':'FFFEF3C7','ATRASO CRÍTICO':'FFFEE2E2','CRÍTICO':'FFFEE2E2',FINALIZADO:'FFCCFBF1','SIN DATOS':'FFF3F4F6' };
+    const fcolor = { 'AL DÍA':'FF065F46','ATRASO MENOR':'FF92400E','ATRASO CRÍTICO':'FF991B1B','CRÍTICO':'FF991B1B',FINALIZADO:'FF115E59','SIN DATOS':'FF374151' };
     
-    for (let c=1; c<=9; c++) {
-        row.getCell(c).border = styleBorder;
-        if (i % 2 !== 0) row.getCell(c).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF8FAFC' } };
+    row.getCell(6).fill = { type:'pattern', pattern:'solid', fgColor:{argb:cmap[st]||'FFFFFFFF'} };
+    row.getCell(6).font = { bold:true, color:{argb: fcolor[st]||'FF000000'} };
+    row.getCell(6).alignment = { horizontal:'center' };
+    
+    for (let c=1; c<=6; c++) {
+        const cell = row.getCell(c);
+        cell.border = styleBorder;
+        if (i % 2 !== 0 && c !== 6) cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: colorLight } };
     }
-    row.height = 20;
+    row.height = 22;
   });
 
-  // Filtros y Barras de datos
-  ws.autoFilter = { from: `A${startTable1+1}`, to: `I${startTable1+1+accs.length}` };
-  ws.addConditionalFormatting({
-    ref: `I${startTable1+2}:I${startTable1+1+accs.length}`,
-    rules: [{ type: 'dataBar', color: { argb: 'FFDC2626' }, showValue: true, gradient: false }]
-  });
-
-  // 6. TABLA: HITOS Y METAS
-  const startTable2 = startTable1 + accs.length + 4;
-  ws.mergeCells(`A${startTable2}:J${startTable2}`);
-  ws.getCell(`A${startTable2}`).value = 'Hitos y metas';
-  ws.getCell(`A${startTable2}`).font = { bold:true, size:14, color:{argb:'FF1E3A8A'} };
-  ws.getRow(startTable2).height = 25;
-
-  const headers2 = ['Hito', 'Fecha', 'Meta acumulada', 'Resultado esperado', 'Situación visual'];
-  headers2.forEach((h,i)=>{
-    const c = ws.getCell(startTable2+1, 1+i);
-    c.value = h; c.font = { bold:true, color:{argb:'FFFFFFFF'} };
-    c.fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FF1E3A8A'} };
-    c.alignment = { horizontal:'center', vertical:'middle' };
-    c.border = styleBorder;
-  });
-  ws.getRow(startTable2+1).height = 25;
-
-  const hitosData = [
-    { name: 'Preparación', date: '30-10-2026', meta: '10%', exp: 'Responsables y volumen definidos: 2.220 equipos' },
-    { name: 'Inventario base', date: '06-11-2026', meta: '55%', exp: '55% Columnas A-AF completado' },
-    { name: 'Corte AG-AS', date: '13-11-2026', meta: '75%', exp: '75% Campos avanzados en desarrollo' },
-    { name: 'Cierre AG-AS', date: '20-11-2026', meta: '90%', exp: '90% Información avanzada validada' },
-    { name: 'QA', date: '27-11-2026', meta: '98%', exp: '98% Correcciones terminadas' },
-    { name: 'Cierre', date: '30-11-2026', meta: '100%', exp: '100% Inventarios consolidados' },
-  ];
-
-  hitosData.forEach((h, i) => {
-    const r = startTable2 + 2 + i;
-    const row = ws.getRow(r);
-    row.getCell(1).value = h.name;
-    row.getCell(2).value = h.date;
-    row.getCell(3).value = h.meta;
-    row.getCell(4).value = h.exp;
-    
-    let sit = 'PRÓXIMO';
-    let bgColor = 'FFFEF3C7'; // Amarillo
-    if (i === 0) { sit = 'CUMPLIDO'; bgColor = 'FFD1FAE5'; } // Verde
-    
-    row.getCell(5).value = sit;
-    row.getCell(5).fill = { type:'pattern', pattern:'solid', fgColor:{argb:bgColor} };
-    row.getCell(5).alignment = { horizontal:'center' };
-
-    for (let c=1; c<=5; c++) {
-        row.getCell(c).border = styleBorder;
-        if (i % 2 !== 0 && c !== 5) row.getCell(c).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF8FAFC' } };
-    }
-    row.height = 20;
-  });
-
-  ws.autoFilter = { from: `A${startTable2+1}`, to: `E${startTable2+1+hitosData.length}` };
-
-  /* ==================== HOJA 2: INVENTARIO DETALLADO ==================== */
+  /* ==================== HOJA 2: ACTUALIZAR AVANCE ==================== */
   const wsA = wb.addWorksheet('Inventario Cuentas', { properties:{ tabColor:{argb:'FF16A34A'} } });
   wsA.columns = [
     {header:'Cuenta',key:'name',width:22},{header:'OSAs',key:'osas',width:8},{header:'Responsable',key:'responsible',width:24},
@@ -1462,16 +1644,16 @@ async function exportToExcel() {
   }));
 
   const hA = wsA.getRow(1);
-  hA.eachCell(c => { c.font = {bold:true, color:{argb:'FFFFFFFF'}}; c.fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FF1E3A8A'} }; c.alignment = {horizontal:'center', vertical:'middle'}; c.border = styleBorder; });
+  hA.eachCell(c => { c.font = styleHeader.font; c.fill = styleHeader.fill; c.alignment = styleHeader.alignment; c.border = styleBorder; });
   hA.height = 30;
   [9,10,11,12,14].forEach(c=>wsA.getColumn(c).numFmt = '0.0%');
   wsA.getColumn(15).numFmt = '+0.0%;-0.0%;0.0%';
   
   wsA.eachRow((row, r)=>{
     if (r===1) return;
-    row.eachCell((cell) => {
+    row.eachCell((cell, colNumber) => {
         cell.border = styleBorder;
-        if (r % 2 === 0) cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF8FAFC' } };
+        if (r % 2 === 0) cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: colorLight } };
     });
     const s = row.getCell(18);
     const cmap = { 'AL DÍA':'FFD1FAE5','ATRASO MENOR':'FFFEF3C7','ATRASO CRÍTICO':'FFFEE2E2','CRÍTICO':'FFFEE2E2',FINALIZADO:'FFCCFBF1','SIN DATOS':'FFF3F4F6' };
@@ -1482,7 +1664,16 @@ async function exportToExcel() {
 
   wsA.addConditionalFormatting({
     ref: `L2:L${accs.length + 1}`,
-    rules: [{ type: 'dataBar', color: { argb: 'FF2563EB' }, showValue: true, gradient: true }]
+    rules: [
+      {
+        type: 'dataBar',
+        minLength: 0,
+        maxLength: 100,
+        color: { argb: 'FF2563EB' },
+        showValue: true,
+        gradient: true
+      }
+    ]
   });
   
   wsA.views = [{ state:'frozen', ySplit:1 }];
@@ -1504,14 +1695,14 @@ async function exportToExcel() {
     }));
     
     const hR = wsR.getRow(1);
-    hR.eachCell(c => { c.font = {bold:true, color:{argb:'FFFFFFFF'}}; c.fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FFDC2626'} }; c.alignment = {horizontal:'center', vertical:'middle'}; c.border = styleBorder; });
+    hR.eachCell(c => { c.font = styleHeader.font; c.fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FFDC2626'} }; c.alignment = styleHeader.alignment; c.border = styleBorder; });
     hR.height = 30;
 
     wsR.eachRow((row, r) => {
         if (r===1) return;
         row.eachCell((cell) => {
             cell.border = styleBorder;
-            if (r % 2 === 0) cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF8FAFC' } };
+            if (r % 2 === 0) cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: colorLight } };
         });
         const semCell = row.getCell(11);
         const s = semCell.value;
@@ -1537,7 +1728,7 @@ async function exportToExcel() {
     state.history.forEach(h=>wsH.addRow(h));
     
     const hH = wsH.getRow(1);
-    hH.eachCell(c => { c.font = {bold:true, color:{argb:'FFFFFFFF'}}; c.fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FFF59E0B'} }; c.alignment = {horizontal:'center', vertical:'middle'}; c.border = styleBorder; });
+    hH.eachCell(c => { c.font = styleHeader.font; c.fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FFF59E0B'} }; c.alignment = styleHeader.alignment; c.border = styleBorder; });
     hH.height = 30;
     [9,10,11,12].forEach(c=>wsH.getColumn(c).numFmt = '0.0%');
     
@@ -1545,7 +1736,7 @@ async function exportToExcel() {
         if (r===1) return;
         row.eachCell((cell) => {
             cell.border = styleBorder;
-            if (r % 2 === 0) cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF8FAFC' } };
+            if (r % 2 === 0) cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: colorLight } };
         });
         row.height = 22;
     });
@@ -1555,7 +1746,7 @@ async function exportToExcel() {
 
   const buf = await wb.xlsx.writeBuffer();
   download(new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}), `MPS_Ejecutivo_${new Date().toISOString().slice(0,10)}.xlsx`);
-  toast('✓ Excel Ejecutivo Premium exportado');
+  toast('✓ Excel Ejecutivo exportado');
 }
 
 /* ========== UTILS ========== */
