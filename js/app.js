@@ -1,6 +1,6 @@
 /* =============================================================
-   CONTROL PROYECTO INVENTARIOS MPS 2026 - CÓDIGO COMPLETO
-   Versión corregida - PARTE 1 de 2
+   CONTROL PROYECTO INVENTARIOS MPS 2026
+   Versión corregida (sin duplicados + validaciones + fixes)
    ============================================================= */
 const STORAGE_KEY = 'mps_inv_2026_v1';
 const WEIGHTS = { base: 0.45, agas: 0.35, qa: 0.20 };
@@ -31,56 +31,44 @@ const SCHEDULE = [
     osaAction:'Revisar instrucciones, confirmar archivo, universo preliminar y responsable por cuenta.',
     supAction:'Distribuir formato, explicar criterios y resolver dudas iniciales.',
     deliverable:'Responsables confirmados y universo preliminar por cuenta.',
-    meta:0.10,
-    evidence:'Correo o acta de asignación; total preliminar de equipos.',
-    risk:'Falta de responsable o universo desconocido.',
-    meeting:'30-oct: control de inicio',
+    meta:0.10, evidence:'Correo o acta de asignación; total preliminar de equipos.',
+    risk:'Falta de responsable o universo desconocido.', meeting:'30-oct: control de inicio',
     responsible:'Supervisor + OSA', status:'Completado' },
   { week:'Semana 1', period:'02-06 nov', phase:'Levantamiento base columnas A-AF',
     osaAction:'Completar datos de identificación, red, ubicación, estado y datos base para todos los equipos.',
     supAction:'Revisar consistencia inicial y remover bloqueos de acceso o información.',
-    deliverable:'Campos A-AF avanzados y primeras brechas documentadas.',
-    meta:0.55,
+    deliverable:'Campos A-AF avanzados y primeras brechas documentadas.', meta:0.55,
     evidence:'Archivo OSA actualizado; conteo total y equipos revisados.',
     risk:'Bajo ritmo de levantamiento o diferencias en el universo.',
-    meeting:'06-nov: primer corte formal',
-    responsible:'OSA / Supervisor', status:'En curso' },
+    meeting:'06-nov: primer corte formal', responsible:'OSA / Supervisor', status:'En curso' },
   { week:'Semana 2', period:'09-13 nov', phase:'Investigación columnas AG-AS, corte 1',
     osaAction:'Investigar los campos avanzados; registrar información disponible y documentar lo no aplicable.',
     supAction:'Verificar criterios, priorizar cuentas atrasadas y asignar acciones.',
-    deliverable:'Primer corte AG-AS y pendientes identificados.',
-    meta:0.75,
+    deliverable:'Primer corte AG-AS y pendientes identificados.', meta:0.75,
     evidence:'Listado de pendientes AG-AS; fuentes consultadas; responsables.',
     risk:'Dependencias de información y campos no aplicables sin justificación.',
-    meeting:'13-nov: revisión de avance',
-    responsible:'OSA / Supervisor', status:'Pendiente' },
+    meeting:'13-nov: revisión de avance', responsible:'OSA / Supervisor', status:'Pendiente' },
   { week:'Semana 3', period:'16-20 nov', phase:'Cierre de investigación AG-AS',
     osaAction:'Completar investigación, resolver pendientes y actualizar excepciones.',
     supAction:'Validar evidencia y escalar bloqueos críticos.',
-    deliverable:'AG-AS cerrado o excepciones formalmente documentadas.',
-    meta:0.90,
+    deliverable:'AG-AS cerrado o excepciones formalmente documentadas.', meta:0.90,
     evidence:'Archivo actualizado; excepciones; acuerdos de cierre.',
     risk:'Pendientes sin responsable o evidencia insuficiente.',
-    meeting:'20-nov: cierre AG-AS',
-    responsible:'OSA / Supervisor', status:'Pendiente' },
+    meeting:'20-nov: cierre AG-AS', responsible:'OSA / Supervisor', status:'Pendiente' },
   { week:'Semana 4', period:'23-27 nov', phase:'QA y correcciones',
     osaAction:'Corregir duplicados, vacíos, formatos e inconsistencias detectadas.',
     supAction:'Ejecutar control de calidad, muestreo y devolución de observaciones.',
-    deliverable:'Inventario corregido y listo para cierre.',
-    meta:0.98,
+    deliverable:'Inventario corregido y listo para cierre.', meta:0.98,
     evidence:'Checklist QA; observaciones resueltas; versión corregida.',
     risk:'Correcciones tardías o reincidencia de errores.',
-    meeting:'27-nov: aprobación QA',
-    responsible:'Supervisor + OSA', status:'Pendiente' },
+    meeting:'27-nov: aprobación QA', responsible:'Supervisor + OSA', status:'Pendiente' },
   { week:'Cierre', period:'30 nov', phase:'Revisión final y Cierre',
     osaAction:'Entregar versión final y documentar pendientes excepcionales.',
     supAction:'Consolidar estado, preparar informe y cerrar compromisos.',
-    deliverable:'Inventarios cerrados y estado final presentado.',
-    meta:1.00,
+    deliverable:'Inventarios cerrados y estado final presentado.', meta:1.00,
     evidence:'Versión final; acta de cierre; pendientes excepcionales.',
     risk:'Pendientes sin aceptación o falta de evidencia final.',
-    meeting:'30-nov: cierre del proyecto',
-    responsible:'Supervisor', status:'Pendiente' },
+    meeting:'30-nov: cierre del proyecto', responsible:'Supervisor', status:'Pendiente' },
 ];
 
 let state = null;
@@ -180,6 +168,8 @@ async function autoSaveToFile() {
     await w.write(JSON.stringify(state, null, 2));
     await w.close();
     state._lastFileSave = new Date().toISOString();
+    // Persistir _lastFileSave en localStorage para que sobreviva al reload
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch {}
     try {
       const dir = await dbGet(STORE_CURRENT, 'dirHandle');
       if (dir) {
@@ -208,6 +198,7 @@ async function maybeAutoSnapshot() {
 }
 
 function saveState() {
+  if (!state) return;
   state._lastSave = new Date().toISOString();
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch(e) {}
   if (saveTimer) clearTimeout(saveTimer);
@@ -217,6 +208,7 @@ function saveState() {
   }, 400);
 }
 async function saveStateFull() {
+  if (!state) return;
   state._lastSave = new Date().toISOString();
   await dbPut(STORE_CURRENT, 'current', state);
   await autoSaveToFile();
@@ -241,7 +233,7 @@ async function loadState() {
 }
 function getBackupStatus() {
   if (!fileHandle) return { level: 'warn', msg: '⚠ Sin carpeta de respaldo', long: 'Configurá una carpeta en Respaldos para protección automática.' };
-  if (!state._lastFileSave) return { level: 'warn', msg: '⚠ Aún sin guardado a archivo', long: 'Hacé un cambio o esperá 5 min.' };
+  if (!state || !state._lastFileSave) return { level: 'warn', msg: '⚠ Aún sin guardado a archivo', long: 'Hacé un cambio o esperá 5 min.' };
   const last = new Date(state._lastFileSave);
   const hours = (Date.now() - last.getTime()) / 3600000;
   if (hours > 24) return { level: 'danger', msg: `🔴 Último respaldo hace ${Math.floor(hours/24)} días`, long: 'Exportá manualmente para asegurar los datos.' };
@@ -265,7 +257,7 @@ function startAutoSave() {
 }
 function setupUnloadWarning() {
   window.addEventListener('beforeunload', e => {
-    if (!fileHandle) return;
+    if (!fileHandle || !state) return;
     const last = state._lastFileSave ? new Date(state._lastFileSave).getTime() : 0;
     const hours = (Date.now() - last) / 3600000;
     if (hours > 1) { e.preventDefault(); e.returnValue = '¿Salir sin respaldar a carpeta?'; return e.returnValue; }
@@ -367,7 +359,8 @@ function validateAll() {
   state.accounts.forEach(a => {
     if (a.reviewed > a.total) w.push({ accountId:a.id, account:a.name, msg:`Revisados (${a.reviewed}) > Total (${a.total})` });
     if (a.baseCount > a.reviewed) w.push({ accountId:a.id, account:a.name, msg:`Base ok (${a.baseCount}) > Revisados (${a.reviewed})` });
-    if (a.agasCount > a.baseCount) w.push({ accountId:a.id, account:a.name, msg:`AG-AS ok > Base ok — verificar` });
+    if (a.agasCount > a.baseCount) w.push({ accountId:a.id, account:a.name, msg:`AG-AS ok (${a.agasCount}) > Base ok (${a.baseCount})` });
+    if (a.qaCount > a.agasCount) w.push({ accountId:a.id, account:a.name, msg:`QA ok (${a.qaCount}) > AG-AS ok (${a.agasCount})` });
     if (a.criticalBlock && !a.nextAction) w.push({ accountId:a.id, account:a.name, msg:`Bloqueo sin próxima acción` });
     if (a.criticalBlock && !a.commitmentDate) w.push({ accountId:a.id, account:a.name, msg:`Bloqueo sin fecha compromiso` });
   });
@@ -396,6 +389,7 @@ function render() {
   charts = {};
   updateBackupStatus();
   const app = document.getElementById('app');
+  if (!app) return;
   if (currentView === 'dashboard') renderDashboard(app);
   else if (currentView === 'plan') renderPlan(app);
   else if (currentView === 'accounts') renderAccounts(app);
@@ -504,34 +498,36 @@ function renderDashboard(app) {
     return;
   }
 
-  charts.progress = new Chart(document.getElementById('chartProgress'), {
-    type:'bar',
-    data:{ labels:accs.map(a=>a.name), datasets:[
-      { label:'Avance', data:accs.map(a=>+(calcGlobal(a)*100).toFixed(1)), backgroundColor:'#2563eb', borderRadius:6 },
-      { label:'Meta', data:accs.map(()=>+(calcMeta(state.controlDate)*100).toFixed(1)), backgroundColor:'#94a3b8', borderRadius:6 },
-    ]},
-    options:{ responsive:true, maintainAspectRatio:false,
-      scales:{ y:{ beginAtZero:true, max:100, ticks:{ callback:v=>v+'%' } } },
-      plugins:{
-        legend:{ position:'bottom' },
-        datalabels: { anchor: 'end', align: 'top', formatter: (val) => val > 0 ? val + '%' : '', font: { size: 10, weight: 'bold' }, color: '#374151' }
+  try {
+    charts.progress = new Chart(document.getElementById('chartProgress'), {
+      type:'bar',
+      data:{ labels:accs.map(a=>a.name), datasets:[
+        { label:'Avance', data:accs.map(a=>+(calcGlobal(a)*100).toFixed(1)), backgroundColor:'#2563eb', borderRadius:6 },
+        { label:'Meta', data:accs.map(()=>+(calcMeta(state.controlDate)*100).toFixed(1)), backgroundColor:'#94a3b8', borderRadius:6 },
+      ]},
+      options:{ responsive:true, maintainAspectRatio:false,
+        scales:{ y:{ beginAtZero:true, max:100, ticks:{ callback:v=>v+'%' } } },
+        plugins:{
+          legend:{ position:'bottom' },
+          datalabels: { anchor: 'end', align: 'top', formatter: (val) => val > 0 ? val + '%' : '', font: { size: 10, weight: 'bold' }, color: '#374151' }
+        }
       }
-    }
-  });
+    });
 
-  charts.status = new Chart(document.getElementById('chartStatus'), {
-    type:'doughnut',
-    data:{ labels:['Al día','Atraso menor','Atraso crítico','Finalizado','Sin datos'], datasets:[{
-      data:[counts['AL DÍA'],counts['ATRASO MENOR'],counts['ATRASO CRÍTICO']+counts['CRÍTICO'],counts.FINALIZADO,counts['SIN DATOS']],
-      backgroundColor:['#16a34a','#f59e0b','#dc2626','#0d9488','#9ca3af'], borderWidth:0,
-    }]},
-    options:{ responsive:true, maintainAspectRatio:false,
-      plugins:{
-        legend:{ position:'bottom' },
-        datalabels: { color: '#fff', font: { size: 12, weight: 'bold' }, formatter: (val) => val > 0 ? val : '' }
+    charts.status = new Chart(document.getElementById('chartStatus'), {
+      type:'doughnut',
+      data:{ labels:['Al día','Atraso menor','Atraso crítico','Finalizado','Sin datos'], datasets:[{
+        data:[counts['AL DÍA'],counts['ATRASO MENOR'],counts['ATRASO CRÍTICO']+counts['CRÍTICO'],counts.FINALIZADO,counts['SIN DATOS']],
+        backgroundColor:['#16a34a','#f59e0b','#dc2626','#0d9488','#9ca3af'], borderWidth:0,
+      }]},
+      options:{ responsive:true, maintainAspectRatio:false,
+        plugins:{
+          legend:{ position:'bottom' },
+          datalabels: { color: '#fff', font: { size: 12, weight: 'bold' }, formatter: (val) => val > 0 ? val : '' }
+        }
       }
-    }
-  });
+    });
+  } catch (e) { console.warn('Error al dibujar gráficos:', e); }
 }
 
 /* ---------- PLAN SEMANAL ---------- */
@@ -645,9 +641,41 @@ function renderAccounts(app) {
       let val = e.target.value;
       if (e.target.type==='checkbox') val = e.target.checked;
       else if (e.target.type==='number') {
-        val = val==='' ? 0 : Math.max(0, Number(val));
-        if (field==='reviewed' && val > acc.total) { toast('Revisados no puede superar el total'); return; }
-        if (field==='baseCount' && val > acc.reviewed) { toast('Base ok no puede superar revisados'); return; }
+        val = val==='' ? 0 : Math.max(0, Math.floor(Number(val)) || 0);
+
+        // Jerarquía: Total ≥ Revisados ≥ Base ok ≥ AG-AS ok ≥ QA ok
+        if (field==='total' && val < acc.reviewed) {
+          toast('Total no puede ser menor a Revisados');
+          e.target.value = acc.total; return;
+        }
+        if (field==='reviewed' && val > acc.total) {
+          toast('Revisados no puede superar el Total');
+          e.target.value = acc.reviewed; return;
+        }
+        if (field==='reviewed' && val < acc.baseCount) {
+          toast('Revisados no puede ser menor a Base ok');
+          e.target.value = acc.reviewed; return;
+        }
+        if (field==='baseCount' && val > acc.reviewed) {
+          toast('Base ok no puede superar Revisados');
+          e.target.value = acc.baseCount; return;
+        }
+        if (field==='baseCount' && val < acc.agasCount) {
+          toast('Base ok no puede ser menor a AG-AS ok');
+          e.target.value = acc.baseCount; return;
+        }
+        if (field==='agasCount' && val > acc.baseCount) {
+          toast('AG-AS ok no puede superar Base ok');
+          e.target.value = acc.agasCount; return;
+        }
+        if (field==='agasCount' && val < acc.qaCount) {
+          toast('AG-AS ok no puede ser menor a QA ok');
+          e.target.value = acc.agasCount; return;
+        }
+        if (field==='qaCount' && val > acc.agasCount) {
+          toast('QA ok no puede superar AG-AS ok');
+          e.target.value = acc.qaCount; return;
+        }
       }
       acc[field] = val;
       if (!acc.updateDate && ['reviewed','baseCount','agasCount','qaCount'].includes(field)) acc.updateDate = state.controlDate;
@@ -750,6 +778,7 @@ async function openImportModal(file) {
       acc.reviewed = baseOk;
       acc.baseCount = baseOk;
       acc.agasCount = agasOk;
+      acc.qaCount = Math.min(acc.qaCount, agasOk); // QA no puede superar AG-AS
       acc.updateDate = state.controlDate;
       saveState();
       modal.style.display = 'none';
@@ -793,10 +822,11 @@ function openReunionModal(accountId) {
         <label for="rm-block" style="margin:0">Bloqueo crítico</label>
       </div>
       <div style="grid-column:1/-1"><label>Detalle del bloqueo</label><input type="text" id="rm-blockdetail" value="${acc.blockDetail||''}"></div>
-      <div><label>Próxima acción</label><input type="text" id="rm-nextaction" value="${acc.nextAction||''}"></div>
+      <div><label>Próxima acción *</label><input type="text" id="rm-nextaction" value="${acc.nextAction||''}"></div>
       <div><label>Responsable</label><input type="text" id="rm-actionresp" value="${acc.actionResponsible||''}"></div>
-      <div><label>Fecha compromiso</label><input type="date" id="rm-commitment" value="${acc.commitmentDate||''}"></div>
+      <div><label>Fecha compromiso *</label><input type="date" id="rm-commitment" value="${acc.commitmentDate||''}"></div>
     </div>
+    <p class="help" style="margin-top:6px">* Obligatorios si hay bloqueo crítico.</p>
     <h3 style="margin-top:24px">Observaciones</h3>
     <div style="margin-top:10px"><textarea id="rm-obs" rows="2" style="width:100%;padding:8px 12px;border:1px solid var(--gray-200);border-radius:8px;font-family:inherit;font-size:13px">${acc.observations||''}</textarea></div>
     <div class="modal-actions" style="justify-content:space-between;margin-top:24px">
@@ -807,22 +837,46 @@ function openReunionModal(accountId) {
   modal.style.display = 'grid';
   document.getElementById('rm-cancel').onclick = () => { modal.style.display = 'none'; };
   document.getElementById('rm-save').onclick = () => {
-    acc.total = Math.max(0, parseInt(document.getElementById('rm-total').value) || 0);
-    acc.reviewed = Math.max(0, parseInt(document.getElementById('rm-reviewed').value) || 0);
-    acc.baseCount = Math.max(0, parseInt(document.getElementById('rm-base').value) || 0);
-    acc.agasCount = Math.max(0, parseInt(document.getElementById('rm-agas').value) || 0);
-    acc.qaCount = Math.max(0, parseInt(document.getElementById('rm-qa').value) || 0);
-    acc.criticalBlock = document.getElementById('rm-block').checked;
+    const total = Math.max(0, parseInt(document.getElementById('rm-total').value) || 0);
+    const reviewed = Math.max(0, parseInt(document.getElementById('rm-reviewed').value) || 0);
+    const baseCount = Math.max(0, parseInt(document.getElementById('rm-base').value) || 0);
+    const agasCount = Math.max(0, parseInt(document.getElementById('rm-agas').value) || 0);
+    const qaCount = Math.max(0, parseInt(document.getElementById('rm-qa').value) || 0);
+    const criticalBlock = document.getElementById('rm-block').checked;
+    const nextAction = document.getElementById('rm-nextaction').value.trim();
+    const commitmentDate = document.getElementById('rm-commitment').value;
+
+    // Validaciones de jerarquía
+    if (reviewed > total) { toast('Revisados no puede superar el Total'); return; }
+    if (baseCount > reviewed) { toast('Base ok no puede superar Revisados'); return; }
+    if (agasCount > baseCount) { toast('AG-AS ok no puede superar Base ok'); return; }
+    if (qaCount > agasCount) { toast('QA ok no puede superar AG-AS ok'); return; }
+    // Validaciones de bloqueo (PDF sección 5)
+    if (criticalBlock && !nextAction) { toast('Bloqueo crítico requiere próxima acción'); return; }
+    if (criticalBlock && !commitmentDate) { toast('Bloqueo crítico requiere fecha compromiso'); return; }
+
+    acc.total = total;
+    acc.reviewed = reviewed;
+    acc.baseCount = baseCount;
+    acc.agasCount = agasCount;
+    acc.qaCount = qaCount;
+    acc.criticalBlock = criticalBlock;
     acc.blockDetail = document.getElementById('rm-blockdetail').value;
-    acc.nextAction = document.getElementById('rm-nextaction').value;
+    acc.nextAction = nextAction;
     acc.actionResponsible = document.getElementById('rm-actionresp').value;
-    acc.commitmentDate = document.getElementById('rm-commitment').value;
+    acc.commitmentDate = commitmentDate;
     acc.observations = document.getElementById('rm-obs').value;
     acc.updateDate = state.controlDate;
+
     if (acc.criticalBlock && acc.blockDetail) {
       const exists = state.risks.find(r => r.account === acc.name && r.status !== 'Cerrado');
       if (!exists) {
-        state.risks.push({ id: nextRiskId(), meetingDate: state.controlDate, account: acc.name, category: 'Plazo', detail: acc.blockDetail, impact: 'Alto', responsible: acc.actionResponsible, commitmentDate: acc.commitmentDate, status: 'Abierto', closure: '' });
+        state.risks.push({
+          id: nextRiskId(), meetingDate: state.controlDate, account: acc.name,
+          category: 'Plazo', detail: acc.blockDetail, impact: 'Alto',
+          responsible: acc.actionResponsible, commitmentDate: acc.commitmentDate,
+          status: 'Abierto', closure: ''
+        });
       }
     }
     state.history.push({
@@ -926,10 +980,18 @@ function renderRisks(app) {
     </tr>`;
   }).join('');
   tb.querySelectorAll('input, select').forEach(inp=>{
-    inp.addEventListener('change',e=>{ const i = +e.target.closest('tr').dataset.i; state.risks[i][e.target.dataset.field] = e.target.value; saveState(); render(); });
+    inp.addEventListener('change',e=>{
+      const i = +e.target.closest('tr').dataset.i;
+      state.risks[i][e.target.dataset.field] = e.target.value;
+      saveState(); render();
+    });
   });
   tb.querySelectorAll('[data-del]').forEach(b=>{
-    b.addEventListener('click',e=>{ if (!confirm('¿Eliminar?')) return; state.risks.splice(+e.target.dataset.del,1); saveState(); render(); });
+    b.addEventListener('click',e=>{
+      if (!confirm('¿Eliminar?')) return;
+      state.risks.splice(+e.target.dataset.del,1);
+      saveState(); render();
+    });
   });
   document.getElementById('btnAddRisk').addEventListener('click',()=>{
     state.risks.push({ id: nextRiskId(), meetingDate:state.controlDate, account:'', category:'Otro', detail:'', impact:'Bajo', responsible:'', commitmentDate:'', status:'Abierto', closure:'' });
@@ -960,513 +1022,6 @@ function renderHistory(app) {
   document.getElementById('btnSnap2').addEventListener('click', takeSnapshot);
 }
 
-/* ===== FIN DE LA PARTE 1 — la PARTE 2 continúa desde aquí ===== */
-/* ---------- CRONOGRAMA ---------- */
-function renderSchedule(app) {
-  app.innerHTML = `<div class="card">
-    <h2>Cronograma semanal y pauta de ejecución</h2>
-    <p class="help">Plan detallado para coordinar a los OSAs, supervisar entregables y conducir las reuniones.</p>
-    <div class="table-wrap" style="margin-top:16px"><table>
-      <thead><tr>
-        <th>Semana</th><th>Periodo</th><th>Fase principal</th>
-        <th style="min-width:180px">Actividades del OSA</th>
-        <th style="min-width:180px">Actividad del supervisor</th>
-        <th style="min-width:150px">Entregable esperado</th>
-        <th>Meta acum.</th>
-        <th style="min-width:150px">Evidencia requerida</th>
-        <th style="min-width:150px">Riesgo a controlar</th>
-        <th>Reunión / control</th>
-        <th>Responsable</th>
-        <th>Estado</th>
-      </tr></thead>
-      <tbody>
-        ${SCHEDULE.map(s=>`<tr>
-          <td><strong>${s.week}</strong></td>
-          <td>${s.period}</td>
-          <td>${s.phase}</td>
-          <td style="font-size:12px;color:var(--gray-600)">${s.osaAction}</td>
-          <td style="font-size:12px;color:var(--gray-600)">${s.supAction}</td>
-          <td style="font-size:12px;color:var(--gray-600)">${s.deliverable}</td>
-          <td><span class="badge badge-sin-fecha" style="background:var(--primary);color:#fff">${fmtPct(s.meta)}</span></td>
-          <td style="font-size:12px;color:var(--gray-600)">${s.evidence}</td>
-          <td style="font-size:12px;color:var(--danger)">${s.risk}</td>
-          <td><span style="font-size:12px;font-weight:600;white-space:nowrap">${s.meeting}</span></td>
-          <td style="font-size:12px;white-space:nowrap">${s.responsible}</td>
-          <td><span class="badge ${s.status==='Completado'?'badge-verde':s.status==='En curso'?'badge-ambar':'badge-sin-fecha'}">${s.status}</span></td>
-        </tr>`).join('')}
-      </tbody>
-    </table></div>
-  </div>`;
-}
-
-/* ---------- RESPALDOS ---------- */
-async function renderBackups(app) {
-  const status = getBackupStatus();
-  const snapshots = await dbAll(STORE_SNAPSHOTS);
-  const recent = snapshots.slice(-20).reverse();
-  const hasFile = !!fileHandle;
-
-  app.innerHTML = `
-    <div class="backup-hero">
-      <h2>🛡 Sistema de respaldo</h2>
-      <p>5 capas de protección. Nunca pierdas el avance del proyecto.</p>
-      <div class="backup-grid">
-        <div class="backup-card ok"><div class="label">Capa 1 · localStorage</div><div class="value">✓ Activo</div></div>
-        <div class="backup-card ok"><div class="label">Capa 2 · IndexedDB</div><div class="value">✓ Activo</div></div>
-        <div class="backup-card ok"><div class="label">Capa 3 · Snapshots</div><div class="value">${snapshots.length} versiones</div></div>
-        <div class="backup-card ${hasFile?'ok':'warn'}"><div class="label">Capa 4 · Carpeta disco</div><div class="value">${hasFile?'✓ Configurada':'⚠ No configurada'}</div></div>
-        <div class="backup-card ok"><div class="label">Capa 5 · Descarga JSON</div><div class="value">✓ Disponible</div></div>
-      </div>
-    </div>
-    <div class="card" style="border-left:4px solid var(--${status.level === 'ok' ? 'success' : status.level === 'warn' ? 'warning' : 'danger'})">
-      <h2>${status.level === 'ok' ? '✓' : status.level === 'warn' ? '⚠' : '🔴'} Estado del respaldo</h2>
-      <p class="help">${status.long}</p>
-      ${!hasFile ? `
-        <div style="margin-top:16px;padding:16px;background:#fffbeb;border-radius:8px">
-          <h3 style="color:#92400e;margin-bottom:8px">Recomendación fuerte</h3>
-          <p style="font-size:13px;color:#78350f;margin-bottom:12px">Configurá una carpeta dentro de <strong>OneDrive</strong>, <strong>Google Drive</strong> o <strong>Dropbox</strong>. La app guardará el archivo <code>mps_backup.json</code> cada 5 minutos, y tu nube lo sincronizará solo.</p>
-          <button class="btn btn-primary" id="btnPickFolder">📁 Elegir carpeta de respaldo</button>
-        </div>
-      ` : `<div style="margin-top:16px;padding:12px;background:#f0fdf4;border-radius:8px;font-size:13px;color:#065f46"><strong>✓ Carpeta activa.</strong> ${state._lastFileSave ? `Último: ${new Date(state._lastFileSave).toLocaleString()}` : ''}</div>`}
-    </div>
-    <div class="card">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px">
-        <div><h2>Máquina del tiempo · ${snapshots.length} versiones</h2><p class="help">Podés volver a cualquier versión anterior. Nada se sobrescribe.</p></div>
-        <div style="display:flex;gap:8px">
-          <button class="btn" id="btnExportNow">⬇ Descargar JSON ahora</button>
-          <button class="btn btn-primary" id="btnImportRestore">⬆ Restaurar desde archivo</button>
-        </div>
-      </div>
-      ${recent.length === 0 ? '<div class="empty">Aún no hay versiones guardadas.</div>' : `
-      <div class="snapshot-list">
-        ${recent.map(s => {
-          const accCount = s.state.accounts ? s.state.accounts.length : 0;
-          return `<div class="snapshot-item">
-            <div><div class="snapshot-date">${new Date(s.date).toLocaleString('es-CL')}</div><div class="snapshot-meta">${accCount} cuentas · ${s.state.history?.length || 0} cortes</div></div>
-            <div style="text-align:right"><div class="snapshot-meta">ID</div><div style="font-family:monospace;font-size:11px">#${s.id}</div></div>
-            <button class="btn btn-sm" data-restore="${s.id}">Restaurar</button>
-            <button class="btn-del-snap" data-del-snap="${s.id}" title="Eliminar respaldo">🗑️ Eliminar</button>
-          </div>`;
-        }).join('')}
-      </div>`}
-    </div>
-  `;
-
-  document.getElementById('btnPickFolder')?.addEventListener('click', pickBackupFolder);
-  document.getElementById('btnExportNow')?.addEventListener('click', () => {
-    const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' });
-    download(blob, `mps_backup_${new Date().toISOString().slice(0, 10)}_${Date.now()}.json`);
-    toast('✓ JSON descargado');
-  });
-  document.getElementById('btnImportRestore')?.addEventListener('click', () => {
-    const input = document.createElement('input');
-    input.type = 'file'; input.accept = '.json';
-    input.onchange = async e => {
-      const f = e.target.files[0]; if (!f) return;
-      const txt = await f.text();
-      try {
-        const data = JSON.parse(txt);
-        if (!data.accounts) throw new Error('Formato inválido');
-        if (!confirm('¿Reemplazar TODOS los datos actuales? La versión actual quedará en el historial.')) return;
-        await addSnapshot(state); state = data; await dbPut(STORE_CURRENT, 'current', state); saveState(); toast('✓ Datos restaurados'); render();
-      } catch (err) { toast('Error: ' + err.message); }
-    };
-    input.click();
-  });
-  app.querySelectorAll('[data-restore]').forEach(btn => {
-    btn.addEventListener('click', async () => {
-      const id = +btn.dataset.restore; const snap = snapshots.find(s => s.id === id);
-      if (!snap) return;
-      if (!confirm(`¿Restaurar al estado del ${new Date(snap.date).toLocaleString()}? La versión actual se conservará.`)) return;
-      await addSnapshot(state); state = JSON.parse(JSON.stringify(snap.state)); await dbPut(STORE_CURRENT, 'current', state); saveState(); toast('✓ Restaurado'); render();
-    });
-  });
-  app.querySelectorAll('[data-del-snap]').forEach(btn => {
-    btn.addEventListener('click', async () => {
-      const id = +btn.dataset.delSnap;
-      if (!confirm('¿Eliminar este respaldo permanentemente?')) return;
-      await dbDelete(STORE_SNAPSHOTS, id);
-      render();
-      toast('Respaldo eliminado');
-    });
-  });
-}
-
-/* ---------- INSTRUCCIONES ---------- */
-function renderInstructions(app) {
-  app.innerHTML = `
-    <div class="card">
-      <h2>📖 Guía del Sistema · Control Proyecto Inventarios MPS 2026</h2>
-      <p class="help" style="margin-bottom:20px">Esta guía detalla el objetivo del proyecto, la función de cada pestaña y el procedimiento paso a paso para que cualquier persona pueda operar la aplicación sin depender de un experto.</p>
-
-      <div class="instruction-step" style="border-left-color: #2563eb;">
-        <h4>Objetivo del Proyecto</h4>
-        <p>Este sistema controla la implementación del nuevo formato de inventario en las 12 cuentas del área MPS (Servicio de Impresión Gestionado). Cada OSA (Operador de Servicio) completa su archivo individual de inventario. El supervisor (tú) actualiza este control en las reuniones de seguimiento, registra bloqueos y presenta el avance al mandante.</p>
-        <p><strong>Cierre comprometido:</strong> 30-11-2026.</p>
-      </div>
-
-      <div class="instruction-step">
-        <h4>¿Qué hace cada parte del sitio?</h4>
-        <ul>
-          <li><strong>Dashboard:</strong> Vista ejecutiva. Muestra los KPIs (tarjetas), gráficos de avance vs meta, distribución de estados y los hitos del proyecto. No se edita manualmente; se alimenta de las demás pestañas.</li>
-          <li><strong>Plan Semanal:</strong> Te indica en qué semana del cronograma estás, cuál es el foco actual (ej: Levantamiento A-AF) y te muestra las reuniones prioritarias ordenadas por criticidad (las rojas primero).</li>
-          <li><strong>Inventario Cuentas:</strong> Es la hoja principal de carga. Aquí ingresas los datos de cada cuenta (Total equipos, Revisados, Base A-AF, AG-AS y QA), registras bloqueos y observaciones.</li>
-          <li><strong>Gantt:</strong> Muestra la línea de tiempo comprometida para cada cuenta y fase, con vista de días para ver la evolución temporal.</li>
-          <li><strong>Acuerdos y Riesgos:</strong> Registro formal de bloqueos, decisiones y compromisos. Cada registro tiene un responsable y una fecha de vencimiento con semáforo automático.</li>
-          <li><strong>Historial:</strong> Conserva una "foto" (snapshot) del avance de cada cuenta en cada reunión. Permite reconstruir la evolución semanal.</li>
-          <li><strong>Cronograma:</strong> Pauta detallada de las actividades esperadas por semana, entregables, evidencias y riesgos a controlar.</li>
-          <li><strong>Respaldos:</strong> Sistema de 5 capas de seguridad (LocalStorage, IndexedDB, Snapshots, Carpeta Local y Descarga JSON) para no perder nunca la información.</li>
-          <li><strong>Configuración:</strong> Ajustes de la fecha de control, exportación de datos y reinicio del sistema.</li>
-        </ul>
-      </div>
-
-      <div class="instruction-step" style="border-left-color: #16a34a;">
-        <h4>Reglas del Semáforo (Estados)</h4>
-        <p>El estado se calcula automáticamente según el avance global vs la meta a la fecha:</p>
-        <ul>
-          <li><span class="badge badge-verde">AL DÍA</span> Cumple o supera la meta correspondiente a la fecha de control.</li>
-          <li><span class="badge badge-ambar">ATRASO MENOR</span> Está hasta 10 puntos porcentuales por debajo de la meta.</li>
-          <li><span class="badge badge-rojo">ATRASO CRÍTICO</span> Está a más de 10 puntos por debajo de la meta o posee un bloqueo crítico.</li>
-          <li><span class="badge badge-finalizado">FINALIZADO</span> El avance global ha llegado al 100%.</li>
-          <li><span class="badge badge-sin-fecha">SIN DATOS</span> No hay información cargada para esa cuenta.</li>
-        </ul>
-        <p><em>El avance global se calcula con la ponderación: 45% Base A-AF + 35% AG-AS + 20% QA.</em></p>
-      </div>
-
-      <div class="instruction-step">
-        <h4>Cómo actualizar el libro en menos de 5 minutos</h4>
-        <p><strong>Opción A: Registro Manual (Reunión con el OSA)</strong></p>
-        <ol style="padding-left: 24px; font-size: 14px; color: var(--gray-700); margin-bottom: 16px;">
-          <li>Ve a <strong>Plan Semanal</strong> (o <strong>Inventario Cuentas</strong>) y haz clic en la fila/tarjeta de la cuenta que vas a revisar.</li>
-          <li>En la ventana que se abre, ingresa las cantidades exactas dictadas por el OSA (Total, Revisados, Base, AG-AS, QA).</li>
-          <li>Si hay un bloqueo, márcalo y describe la próxima acción, responsable y fecha compromiso.</li>
-          <li>Haz clic en <strong>"Guardar corte de esta cuenta"</strong>. Los porcentajes y el semáforo se calculan solos.</li>
-        </ol>
-        <p><strong>Opción B: Carga desde Excel del OSA</strong></p>
-        <ol style="padding-left: 24px; font-size: 14px; color: var(--gray-700);">
-          <li>Ve a <strong>Inventario Cuentas</strong> y haz clic en <strong>"📂 Importar Excel de OSA"</strong>.</li>
-          <li>Selecciona el archivo del OSA. El sistema contará automáticamente cuántos equipos tienen la Base (32 columnas) y AG-AS (13 columnas) completas.</li>
-          <li>💡 <strong>Truco:</strong> Si el archivo incluye el nombre de la cuenta en su nombre (ej: <em>FASA_Inventario_Octubre.xlsx</em>), el sistema <strong>seleccionará la cuenta automáticamente</strong>. De lo contrario, elígela manualmente del menú desplegable y haz clic en Aplicar.</li>
-        </ol>
-      </div>
-
-      <div class="instruction-step" style="border-left-color: #f59e0b;">
-        <h4>Controles antes de presentar al mandante</h4>
-        <p>Antes de guardar el corte semanal y exportar a Excel, asegúrate de:</p>
-        <ul>
-          <li>✓ Confirmar que todas las cuentas tengan la fecha de último reporte actualizada.</li>
-          <li>✓ Validar que "Equipos revisados" no supere el "Total equipos".</li>
-          <li>✓ Revisar que no haya celdas rojas sin justificación en las observaciones.</li>
-          <li>✓ Verificar que cada bloqueo tenga próxima acción, responsable y fecha compromiso.</li>
-          <li>✓ Usar la Gantt como planificación y el Dashboard/Inventario Cuentas como evidencia del avance real.</li>
-          <li>✓ Guardar el corte en Historial y descargar el Excel para enviar por correo.</li>
-        </ul>
-      </div>
-    </div>
-  `;
-}
-
-/* ---------- SETTINGS ---------- */
-function renderSettings(app) {
-  app.innerHTML = `<div class="card">
-    <h2>Configuración y respaldo</h2>
-    <div class="form-grid" style="margin-bottom:20px">
-      <div><label>Fecha de control</label><input type="date" id="setControlDate" value="${state.controlDate}"><p class="help">Cambiala para simular semanas futuras.</p></div>
-    </div>
-    <div style="display:flex;gap:10px;flex-wrap:wrap">
-      <button class="btn btn-primary" id="btnExportJSON">⬇ Exportar JSON</button>
-      <button class="btn" id="btnImportJSON">⬆ Importar JSON</button>
-      <button class="btn" id="btnExportCSV">⬇ Exportar CSV</button>
-      <button class="btn btn-danger" id="btnReset">🔄 Reiniciar todo</button>
-    </div>
-    <input type="file" id="fileImport" accept="application/json" hidden>
-  </div>`;
-
-  document.getElementById('setControlDate').addEventListener('change',e=>{
-    state.controlDate = e.target.value; saveState();
-    toast('Fecha de control actualizada'); render();
-  });
-  document.getElementById('btnExportJSON').addEventListener('click',()=>{
-    const blob = new Blob([JSON.stringify(state,null,2)],{type:'application/json'});
-    download(blob, `mps_backup_${new Date().toISOString().slice(0,10)}.json`);
-  });
-  document.getElementById('btnImportJSON').addEventListener('click',()=>document.getElementById('fileImport').click());
-  document.getElementById('fileImport').addEventListener('change',e=>{
-    const f = e.target.files[0]; if (!f) return;
-    const r = new FileReader();
-    r.onload = ev => {
-      try { const d = JSON.parse(ev.target.result); if (!d.accounts) throw new Error('Formato inválido');
-        state = d; saveState(); render(); toast('Datos importados correctamente');
-      } catch (err) { alert('Error: ' + err.message); }
-    };
-    r.readAsText(f);
-  });
-  document.getElementById('btnExportCSV').addEventListener('click',()=>{
-    const h = ['Cuenta','OSAs','Responsable','Total','Revisados','Base ok','AG-AS ok','QA ok','%Base','%AG-AS','%QA','Global','Fecha','Meta','Estado'];
-    const rows = state.accounts.map(a=>[a.name,a.osas,a.responsible,a.total,a.reviewed,a.baseCount,a.agasCount,a.qaCount,
-      fmtPct(pctBase(a)),fmtPct(pctAGAS(a)),fmtPct(pctQA(a)),fmtPct(calcGlobal(a)),a.updateDate,fmtPct(calcMeta(state.controlDate)),calcStatus(a)]);
-    const csv = [h,...rows].map(r=>r.join(',')).join('\n');
-    download(new Blob([csv],{type:'text/csv'}), 'mps_cuentas.csv');
-  });
-  document.getElementById('btnReset').addEventListener('click',()=>{
-    if (!confirm('Se borrarán TODOS los datos. ¿Continuar?')) return;
-    state = getInitialState(); saveState(); render(); toast('Sistema reiniciado');
-  });
-}
-
-/* ---------- CRONOGRAMA ---------- */
-function renderSchedule(app) {
-  app.innerHTML = `<div class="card">
-    <h2>Cronograma semanal y pauta de ejecución</h2>
-    <p class="help">Plan detallado para coordinar a los OSAs, supervisar entregables y conducir las reuniones.</p>
-    <div class="table-wrap" style="margin-top:16px"><table>
-      <thead><tr>
-        <th>Semana</th><th>Periodo</th><th>Fase principal</th>
-        <th style="min-width:180px">Actividades del OSA</th>
-        <th style="min-width:180px">Actividad del supervisor</th>
-        <th style="min-width:150px">Entregable esperado</th>
-        <th>Meta acum.</th>
-        <th style="min-width:150px">Evidencia requerida</th>
-        <th style="min-width:150px">Riesgo a controlar</th>
-        <th>Reunión / control</th>
-        <th>Responsable</th>
-        <th>Estado</th>
-      </tr></thead>
-      <tbody>
-        ${SCHEDULE.map(s=>`<tr>
-          <td><strong>${s.week}</strong></td>
-          <td>${s.period}</td>
-          <td>${s.phase}</td>
-          <td style="font-size:12px;color:var(--gray-600)">${s.osaAction}</td>
-          <td style="font-size:12px;color:var(--gray-600)">${s.supAction}</td>
-          <td style="font-size:12px;color:var(--gray-600)">${s.deliverable}</td>
-          <td><span class="badge badge-sin-fecha" style="background:var(--primary);color:#fff">${fmtPct(s.meta)}</span></td>
-          <td style="font-size:12px;color:var(--gray-600)">${s.evidence}</td>
-          <td style="font-size:12px;color:var(--danger)">${s.risk}</td>
-          <td><span style="font-size:12px;font-weight:600;white-space:nowrap">${s.meeting}</span></td>
-          <td style="font-size:12px;white-space:nowrap">${s.responsible}</td>
-          <td><span class="badge ${s.status==='Completado'?'badge-verde':s.status==='En curso'?'badge-ambar':'badge-sin-fecha'}">${s.status}</span></td>
-        </tr>`).join('')}
-      </tbody>
-    </table></div>
-  </div>`;
-}
-
-/* ---------- RESPALDOS ---------- */
-async function renderBackups(app) {
-  const status = getBackupStatus();
-  const snapshots = await dbAll(STORE_SNAPSHOTS);
-  const recent = snapshots.slice(-20).reverse();
-  const hasFile = !!fileHandle;
-
-  app.innerHTML = `
-    <div class="backup-hero">
-      <h2>🛡 Sistema de respaldo</h2>
-      <p>5 capas de protección. Nunca pierdas el avance del proyecto.</p>
-      <div class="backup-grid">
-        <div class="backup-card ok"><div class="label">Capa 1 · localStorage</div><div class="value">✓ Activo</div></div>
-        <div class="backup-card ok"><div class="label">Capa 2 · IndexedDB</div><div class="value">✓ Activo</div></div>
-        <div class="backup-card ok"><div class="label">Capa 3 · Snapshots</div><div class="value">${snapshots.length} versiones</div></div>
-        <div class="backup-card ${hasFile?'ok':'warn'}"><div class="label">Capa 4 · Carpeta disco</div><div class="value">${hasFile?'✓ Configurada':'⚠ No configurada'}</div></div>
-        <div class="backup-card ok"><div class="label">Capa 5 · Descarga JSON</div><div class="value">✓ Disponible</div></div>
-      </div>
-    </div>
-    <div class="card" style="border-left:4px solid var(--${status.level === 'ok' ? 'success' : status.level === 'warn' ? 'warning' : 'danger'})">
-      <h2>${status.level === 'ok' ? '✓' : status.level === 'warn' ? '⚠' : '🔴'} Estado del respaldo</h2>
-      <p class="help">${status.long}</p>
-      ${!hasFile ? `
-        <div style="margin-top:16px;padding:16px;background:#fffbeb;border-radius:8px">
-          <h3 style="color:#92400e;margin-bottom:8px">Recomendación fuerte</h3>
-          <p style="font-size:13px;color:#78350f;margin-bottom:12px">Configurá una carpeta dentro de <strong>OneDrive</strong>, <strong>Google Drive</strong> o <strong>Dropbox</strong>. La app guardará el archivo <code>mps_backup.json</code> cada 5 minutos, y tu nube lo sincronizará solo.</p>
-          <button class="btn btn-primary" id="btnPickFolder">📁 Elegir carpeta de respaldo</button>
-        </div>
-      ` : `<div style="margin-top:16px;padding:12px;background:#f0fdf4;border-radius:8px;font-size:13px;color:#065f46"><strong>✓ Carpeta activa.</strong> ${state._lastFileSave ? `Último: ${new Date(state._lastFileSave).toLocaleString()}` : ''}</div>`}
-    </div>
-    <div class="card">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px">
-        <div><h2>Máquina del tiempo · ${snapshots.length} versiones</h2><p class="help">Podés volver a cualquier versión anterior. Nada se sobrescribe.</p></div>
-        <div style="display:flex;gap:8px">
-          <button class="btn" id="btnExportNow">⬇ Descargar JSON ahora</button>
-          <button class="btn btn-primary" id="btnImportRestore">⬆ Restaurar desde archivo</button>
-        </div>
-      </div>
-      ${recent.length === 0 ? '<div class="empty">Aún no hay versiones guardadas.</div>' : `
-      <div class="snapshot-list">
-        ${recent.map(s => {
-          const accCount = s.state.accounts ? s.state.accounts.length : 0;
-          return `<div class="snapshot-item">
-            <div><div class="snapshot-date">${new Date(s.date).toLocaleString('es-CL')}</div><div class="snapshot-meta">${accCount} cuentas · ${s.state.history?.length || 0} cortes</div></div>
-            <div style="text-align:right"><div class="snapshot-meta">ID</div><div style="font-family:monospace;font-size:11px">#${s.id}</div></div>
-            <button class="btn btn-sm" data-restore="${s.id}">Restaurar</button>
-            <button class="btn-del-snap" data-del-snap="${s.id}" title="Eliminar respaldo">🗑️ Eliminar</button>
-          </div>`;
-        }).join('')}
-      </div>`}
-    </div>
-  `;
-
-  document.getElementById('btnPickFolder')?.addEventListener('click', pickBackupFolder);
-  document.getElementById('btnExportNow')?.addEventListener('click', () => {
-    const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' });
-    download(blob, `mps_backup_${new Date().toISOString().slice(0, 10)}_${Date.now()}.json`);
-    toast('✓ JSON descargado');
-  });
-  document.getElementById('btnImportRestore')?.addEventListener('click', () => {
-    const input = document.createElement('input');
-    input.type = 'file'; input.accept = '.json';
-    input.onchange = async e => {
-      const f = e.target.files[0]; if (!f) return;
-      const txt = await f.text();
-      try {
-        const data = JSON.parse(txt);
-        if (!data.accounts) throw new Error('Formato inválido');
-        if (!confirm('¿Reemplazar TODOS los datos actuales? La versión actual quedará en el historial.')) return;
-        await addSnapshot(state); state = data; await dbPut(STORE_CURRENT, 'current', state); saveState(); toast('✓ Datos restaurados'); render();
-      } catch (err) { toast('Error: ' + err.message); }
-    };
-    input.click();
-  });
-  app.querySelectorAll('[data-restore]').forEach(btn => {
-    btn.addEventListener('click', async () => {
-      const id = +btn.dataset.restore; const snap = snapshots.find(s => s.id === id);
-      if (!snap) return;
-      if (!confirm(`¿Restaurar al estado del ${new Date(snap.date).toLocaleString()}? La versión actual se conservará.`)) return;
-      await addSnapshot(state); state = JSON.parse(JSON.stringify(snap.state)); await dbPut(STORE_CURRENT, 'current', state); saveState(); toast('✓ Restaurado'); render();
-    });
-  });
-  app.querySelectorAll('[data-del-snap]').forEach(btn => {
-    btn.addEventListener('click', async () => {
-      const id = +btn.dataset.delSnap;
-      if (!confirm('¿Eliminar este respaldo permanentemente?')) return;
-      await dbDelete(STORE_SNAPSHOTS, id);
-      render();
-      toast('Respaldo eliminado');
-    });
-  });
-}
-
-/* ---------- INSTRUCCIONES ---------- */
-function renderInstructions(app) {
-  app.innerHTML = `
-    <div class="card">
-      <h2>📖 Guía del Sistema · Control Proyecto Inventarios MPS 2026</h2>
-      <p class="help" style="margin-bottom:20px">Esta guía detalla el objetivo del proyecto, la función de cada pestaña y el procedimiento paso a paso para que cualquier persona pueda operar la aplicación sin depender de un experto.</p>
-
-      <div class="instruction-step" style="border-left-color: #2563eb;">
-        <h4>Objetivo del Proyecto</h4>
-        <p>Este sistema controla la implementación del nuevo formato de inventario en las 12 cuentas del área MPS (Servicio de Impresión Gestionado). Cada OSA (Operador de Servicio) completa su archivo individual de inventario. El supervisor (tú) actualiza este control en las reuniones de seguimiento, registra bloqueos y presenta el avance al mandante.</p>
-        <p><strong>Cierre comprometido:</strong> 30-11-2026.</p>
-      </div>
-
-      <div class="instruction-step">
-        <h4>¿Qué hace cada parte del sitio?</h4>
-        <ul>
-          <li><strong>Dashboard:</strong> Vista ejecutiva. Muestra los KPIs (tarjetas), gráficos de avance vs meta, distribución de estados y los hitos del proyecto. No se edita manualmente; se alimenta de las demás pestañas.</li>
-          <li><strong>Plan Semanal:</strong> Te indica en qué semana del cronograma estás, cuál es el foco actual (ej: Levantamiento A-AF) y te muestra las reuniones prioritarias ordenadas por criticidad (las rojas primero).</li>
-          <li><strong>Inventario Cuentas:</strong> Es la hoja principal de carga. Aquí ingresas los datos de cada cuenta (Total equipos, Revisados, Base A-AF, AG-AS y QA), registras bloqueos y observaciones.</li>
-          <li><strong>Gantt:</strong> Muestra la línea de tiempo comprometida para cada cuenta y fase, con vista de días para ver la evolución temporal.</li>
-          <li><strong>Acuerdos y Riesgos:</strong> Registro formal de bloqueos, decisiones y compromisos. Cada registro tiene un responsable y una fecha de vencimiento con semáforo automático.</li>
-          <li><strong>Historial:</strong> Conserva una "foto" (snapshot) del avance de cada cuenta en cada reunión. Permite reconstruir la evolución semanal.</li>
-          <li><strong>Cronograma:</strong> Pauta detallada de las actividades esperadas por semana, entregables, evidencias y riesgos a controlar.</li>
-          <li><strong>Respaldos:</strong> Sistema de 5 capas de seguridad (LocalStorage, IndexedDB, Snapshots, Carpeta Local y Descarga JSON) para no perder nunca la información.</li>
-          <li><strong>Configuración:</strong> Ajustes de la fecha de control, exportación de datos y reinicio del sistema.</li>
-        </ul>
-      </div>
-
-      <div class="instruction-step" style="border-left-color: #16a34a;">
-        <h4>Reglas del Semáforo (Estados)</h4>
-        <p>El estado se calcula automáticamente según el avance global vs la meta a la fecha:</p>
-        <ul>
-          <li><span class="badge badge-verde">AL DÍA</span> Cumple o supera la meta correspondiente a la fecha de control.</li>
-          <li><span class="badge badge-ambar">ATRASO MENOR</span> Está hasta 10 puntos porcentuales por debajo de la meta.</li>
-          <li><span class="badge badge-rojo">ATRASO CRÍTICO</span> Está a más de 10 puntos por debajo de la meta o posee un bloqueo crítico.</li>
-          <li><span class="badge badge-finalizado">FINALIZADO</span> El avance global ha llegado al 100%.</li>
-          <li><span class="badge badge-sin-fecha">SIN DATOS</span> No hay información cargada para esa cuenta.</li>
-        </ul>
-        <p><em>El avance global se calcula con la ponderación: 45% Base A-AF + 35% AG-AS + 20% QA.</em></p>
-      </div>
-
-      <div class="instruction-step">
-        <h4>Cómo actualizar el libro en menos de 5 minutos</h4>
-        <p><strong>Opción A: Registro Manual (Reunión con el OSA)</strong></p>
-        <ol style="padding-left: 24px; font-size: 14px; color: var(--gray-700); margin-bottom: 16px;">
-          <li>Ve a <strong>Plan Semanal</strong> (o <strong>Inventario Cuentas</strong>) y haz clic en la fila/tarjeta de la cuenta que vas a revisar.</li>
-          <li>En la ventana que se abre, ingresa las cantidades exactas dictadas por el OSA (Total, Revisados, Base, AG-AS, QA).</li>
-          <li>Si hay un bloqueo, márcalo y describe la próxima acción, responsable y fecha compromiso.</li>
-          <li>Haz clic en <strong>"Guardar corte de esta cuenta"</strong>. Los porcentajes y el semáforo se calculan solos.</li>
-        </ol>
-        <p><strong>Opción B: Carga desde Excel del OSA</strong></p>
-        <ol style="padding-left: 24px; font-size: 14px; color: var(--gray-700);">
-          <li>Ve a <strong>Inventario Cuentas</strong> y haz clic en <strong>"📂 Importar Excel de OSA"</strong>.</li>
-          <li>Selecciona el archivo del OSA. El sistema contará automáticamente cuántos equipos tienen la Base (32 columnas) y AG-AS (13 columnas) completas.</li>
-          <li>💡 <strong>Truco:</strong> Si el archivo incluye el nombre de la cuenta en su nombre (ej: <em>FASA_Inventario_Octubre.xlsx</em>), el sistema <strong>seleccionará la cuenta automáticamente</strong>. De lo contrario, elígela manualmente del menú desplegable y haz clic en Aplicar.</li>
-        </ol>
-      </div>
-
-      <div class="instruction-step" style="border-left-color: #f59e0b;">
-        <h4>Controles antes de presentar al mandante</h4>
-        <p>Antes de guardar el corte semanal y exportar a Excel, asegúrate de:</p>
-        <ul>
-          <li>✓ Confirmar que todas las cuentas tengan la fecha de último reporte actualizada.</li>
-          <li>✓ Validar que "Equipos revisados" no supere el "Total equipos".</li>
-          <li>✓ Revisar que no haya celdas rojas sin justificación en las observaciones.</li>
-          <li>✓ Verificar que cada bloqueo tenga próxima acción, responsable y fecha compromiso.</li>
-          <li>✓ Usar la Gantt como planificación y el Dashboard/Inventario Cuentas como evidencia del avance real.</li>
-          <li>✓ Guardar el corte en Historial y descargar el Excel para enviar por correo.</li>
-        </ul>
-      </div>
-    </div>
-  `;
-}
-
-/* ---------- SETTINGS ---------- */
-function renderSettings(app) {
-  app.innerHTML = `<div class="card">
-    <h2>Configuración y respaldo</h2>
-    <div class="form-grid" style="margin-bottom:20px">
-      <div><label>Fecha de control</label><input type="date" id="setControlDate" value="${state.controlDate}"><p class="help">Cambiala para simular semanas futuras.</p></div>
-    </div>
-    <div style="display:flex;gap:10px;flex-wrap:wrap">
-      <button class="btn btn-primary" id="btnExportJSON">⬇ Exportar JSON</button>
-      <button class="btn" id="btnImportJSON">⬆ Importar JSON</button>
-      <button class="btn" id="btnExportCSV">⬇ Exportar CSV</button>
-      <button class="btn btn-danger" id="btnReset">🔄 Reiniciar todo</button>
-    </div>
-    <input type="file" id="fileImport" accept="application/json" hidden>
-  </div>`;
-
-  document.getElementById('setControlDate').addEventListener('change',e=>{
-    state.controlDate = e.target.value; saveState();
-    toast('Fecha de control actualizada'); render();
-  });
-  document.getElementById('btnExportJSON').addEventListener('click',()=>{
-    const blob = new Blob([JSON.stringify(state,null,2)],{type:'application/json'});
-    download(blob, `mps_backup_${new Date().toISOString().slice(0,10)}.json`);
-  });
-  document.getElementById('btnImportJSON').addEventListener('click',()=>document.getElementById('fileImport').click());
-  document.getElementById('fileImport').addEventListener('change',e=>{
-    const f = e.target.files[0]; if (!f) return;
-    const r = new FileReader();
-    r.onload = ev => {
-      try { const d = JSON.parse(ev.target.result); if (!d.accounts) throw new Error('Formato inválido');
-        state = d; saveState(); render(); toast('Datos importados correctamente');
-      } catch (err) { alert('Error: ' + err.message); }
-    };
-    r.readAsText(f);
-  });
-  document.getElementById('btnExportCSV').addEventListener('click',()=>{
-    const h = ['Cuenta','OSAs','Responsable','Total','Revisados','Base ok','AG-AS ok','QA ok','%Base','%AG-AS','%QA','Global','Fecha','Meta','Estado'];
-    const rows = state.accounts.map(a=>[a.name,a.osas,a.responsible,a.total,a.reviewed,a.baseCount,a.agasCount,a.qaCount,
-      fmtPct(pctBase(a)),fmtPct(pctAGAS(a)),fmtPct(pctQA(a)),fmtPct(calcGlobal(a)),a.updateDate,fmtPct(calcMeta(state.controlDate)),calcStatus(a)]);
-    const csv = [h,...rows].map(r=>r.join(',')).join('\n');
-    download(new Blob([csv],{type:'text/csv'}), 'mps_cuentas.csv');
-  });
-  document.getElementById('btnReset').addEventListener('click',()=>{
-    if (!confirm('Se borrarán TODOS los datos. ¿Continuar?')) return;
-    state = getInitialState(); saveState(); render(); toast('Sistema reiniciado');
-  });
-}
-
 /* ========== EXPORTAR EXCEL (DISEÑO EJECUTIVO) ========== */
 function generateChartImage(config) {
   if (typeof Chart === 'undefined') return null;
@@ -1481,13 +1036,13 @@ function generateChartImage(config) {
 }
 
 async function exportToExcel() {
-  if (typeof ExcelJS === 'undefined') { toast('ExcelJS no cargado'); return; }
+  if (typeof ExcelJS === 'undefined') { toast('ExcelJS no cargado. Revisá tu conexión a internet.'); return; }
   toast('Generando Excel Ejecutivo Dinámico...');
-  
+
   const accs = state.accounts;
   const totalOSAs = accs.reduce((s,a)=>s+(+a.osas||0),0);
   const avgProgress = accs.reduce((s,a)=>s+calcGlobal(a),0)/accs.length;
-  
+
   const counts = { FINALIZADO:0, 'AL DÍA':0, 'ATRASO MENOR':0, 'ATRASO CRÍTICO':0, 'CRÍTICO':0, 'SIN DATOS':0 };
   accs.forEach(a=>counts[calcStatus(a)]++);
 
@@ -1495,9 +1050,9 @@ async function exportToExcel() {
   wb.creator = 'Control Proyecto Inventarios MPS 2026';
   wb.created = new Date();
 
-  const colorPrimary = 'FF1E3A8A'; // Azul oscuro ejecutivo
-  const colorLight = 'FFF8FAFC';   // Gris muy claro
-  const colorBorder = 'FFE2E8F0';  // Gris borde
+  const colorPrimary = 'FF1E3A8A';
+  const colorLight = 'FFF8FAFC';
+  const colorBorder = 'FFE2E8F0';
 
   const styleHeader = {
     font: { bold: true, color: { argb: 'FFFFFFFF' }, size: 11 },
@@ -1505,7 +1060,6 @@ async function exportToExcel() {
     alignment: { vertical: 'middle', horizontal: 'center' },
     border: { top: { style: 'thin', color: { argb: colorPrimary } }, bottom: { style: 'thin', color: { argb: colorPrimary } } }
   };
-  
   const styleBorder = {
     top: { style: 'thin', color: { argb: colorBorder } },
     left: { style: 'thin', color: { argb: colorBorder } },
@@ -1547,7 +1101,7 @@ async function exportToExcel() {
     cell.alignment = { vertical: 'middle', horizontal: 'center' };
     cell.value = k.pct ? fmtPct(k.value) : k.value;
     cell.font = { bold: true, size: 20, color: { argb: 'FF1E293B' } };
-    
+
     const labelCell = ws.getCell(7, k.col);
     ws.mergeCells(7, k.col, 7, k.col + 1);
     labelCell.value = k.label;
@@ -1561,25 +1115,25 @@ async function exportToExcel() {
       { label:'Avance', data:accs.map(a=>+(calcGlobal(a)*100).toFixed(1)), backgroundColor:'#2563eb', borderRadius:4 },
       { label:'Meta', data:accs.map(()=>+(calcMeta(state.controlDate)*100).toFixed(1)), backgroundColor:'#cbd5e1', borderRadius:4 },
     ]},
-    options:{ responsive:false, animation:false, 
-      plugins:{ 
-        title:{display:true,text:'Avance vs Meta por cuenta',font:{size:16,weight:'bold'}}, 
+    options:{ responsive:false, animation:false,
+      plugins:{
+        title:{display:true,text:'Avance vs Meta por cuenta',font:{size:16,weight:'bold'}},
         legend:{position:'bottom'},
         datalabels: { display: true, anchor: 'end', align: 'top', formatter: (val) => val > 0 ? val + '%' : '', font: { size: 10, weight: 'bold' }, color: '#333' }
-      }, 
-      scales:{ y:{ beginAtZero:true, max:100, grid:{color:'#f1f5f9'} } } 
+      },
+      scales:{ y:{ beginAtZero:true, max:100, grid:{color:'#f1f5f9'} } }
     },
   });
-  
+
   const doughnutImg = generateChartImage({
     type:'doughnut',
     data:{ labels:['Al día','Atraso menor','Atraso crítico','Finalizado','Sin datos'], datasets:[{ data:[counts['AL DÍA'],counts['ATRASO MENOR'],counts['ATRASO CRÍTICO']+counts['CRÍTICO'],counts.FINALIZADO,counts['SIN DATOS']], backgroundColor:['#16a34a','#f59e0b','#dc2626','#0d9488','#cbd5e1'] }]},
-    options:{ responsive:false, animation:false, 
-      plugins:{ 
-        title:{display:true,text:'Distribución de estados',font:{size:16,weight:'bold'}}, 
+    options:{ responsive:false, animation:false,
+      plugins:{
+        title:{display:true,text:'Distribución de estados',font:{size:16,weight:'bold'}},
         legend:{position:'bottom'},
         datalabels: { display: true, color: '#fff', font: { size: 12, weight: 'bold' }, formatter: (val) => val > 0 ? val : '' }
-      } 
+      }
     },
   });
 
@@ -1609,23 +1163,23 @@ async function exportToExcel() {
     row.getCell(4).font = { color:{argb: gap<0?'FFDC2626':'FF16A34A'}, bold:true };
     row.getCell(5).value = calcPhase(a);
     row.getCell(6).value = st;
-    
+
     const cmap = { 'AL DÍA':'FFD1FAE5','ATRASO MENOR':'FFFEF3C7','ATRASO CRÍTICO':'FFFEE2E2','CRÍTICO':'FFFEE2E2',FINALIZADO:'FFCCFBF1','SIN DATOS':'FFF3F4F6' };
     const fcolor = { 'AL DÍA':'FF065F46','ATRASO MENOR':'FF92400E','ATRASO CRÍTICO':'FF991B1B','CRÍTICO':'FF991B1B',FINALIZADO:'FF115E59','SIN DATOS':'FF374151' };
-    
+
     row.getCell(6).fill = { type:'pattern', pattern:'solid', fgColor:{argb:cmap[st]||'FFFFFFFF'} };
     row.getCell(6).font = { bold:true, color:{argb: fcolor[st]||'FF000000'} };
     row.getCell(6).alignment = { horizontal:'center' };
-    
+
     for (let c=1; c<=6; c++) {
-        const cell = row.getCell(c);
-        cell.border = styleBorder;
-        if (i % 2 !== 0 && c !== 6) cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: colorLight } };
+      const cell = row.getCell(c);
+      cell.border = styleBorder;
+      if (i % 2 !== 0 && c !== 6) cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: colorLight } };
     }
     row.height = 22;
   });
 
-  /* ==================== HOJA 2: ACTUALIZAR AVANCE ==================== */
+  /* ==================== HOJA 2: INVENTARIO CUENTAS ==================== */
   const wsA = wb.addWorksheet('Inventario Cuentas', { properties:{ tabColor:{argb:'FF16A34A'} } });
   wsA.columns = [
     {header:'Cuenta',key:'name',width:22},{header:'OSAs',key:'osas',width:8},{header:'Responsable',key:'responsible',width:24},
@@ -1635,7 +1189,7 @@ async function exportToExcel() {
     {header:'Global',key:'global',width:15},{header:'Fecha',key:'updateDate',width:14},{header:'Meta',key:'meta',width:10},
     {header:'Brecha',key:'gap',width:12},{header:'Fase',key:'phase',width:22},{header:'Bloqueo',key:'block',width:10},{header:'Estado',key:'status',width:16},
   ];
-  
+
   accs.forEach(a=>wsA.addRow({
     name:a.name, osas:a.osas, responsible:a.responsible, total:a.total, reviewed:a.reviewed,
     baseCount:a.baseCount, agasCount:a.agasCount, qaCount:a.qaCount,
@@ -1648,12 +1202,12 @@ async function exportToExcel() {
   hA.height = 30;
   [9,10,11,12,14].forEach(c=>wsA.getColumn(c).numFmt = '0.0%');
   wsA.getColumn(15).numFmt = '+0.0%;-0.0%;0.0%';
-  
+
   wsA.eachRow((row, r)=>{
     if (r===1) return;
-    row.eachCell((cell, colNumber) => {
-        cell.border = styleBorder;
-        if (r % 2 === 0) cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: colorLight } };
+    row.eachCell((cell) => {
+      cell.border = styleBorder;
+      if (r % 2 === 0) cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: colorLight } };
     });
     const s = row.getCell(18);
     const cmap = { 'AL DÍA':'FFD1FAE5','ATRASO MENOR':'FFFEF3C7','ATRASO CRÍTICO':'FFFEE2E2','CRÍTICO':'FFFEE2E2',FINALIZADO:'FFCCFBF1','SIN DATOS':'FFF3F4F6' };
@@ -1664,18 +1218,9 @@ async function exportToExcel() {
 
   wsA.addConditionalFormatting({
     ref: `L2:L${accs.length + 1}`,
-    rules: [
-      {
-        type: 'dataBar',
-        minLength: 0,
-        maxLength: 100,
-        color: { argb: 'FF2563EB' },
-        showValue: true,
-        gradient: true
-      }
-    ]
+    rules: [{ type: 'dataBar', minLength: 0, maxLength: 100, color: { argb: 'FF2563EB' }, showValue: true, gradient: true }]
   });
-  
+
   wsA.views = [{ state:'frozen', ySplit:1 }];
   wsA.autoFilter = { from:'A1', to:'R1' };
 
@@ -1693,23 +1238,23 @@ async function exportToExcel() {
       impact:r.impact, responsible:r.responsible, commitmentDate:r.commitmentDate, status:r.status,
       days:calcRiskDays(r), sem:calcRiskSemaphore(r), closure:r.closure,
     }));
-    
+
     const hR = wsR.getRow(1);
     hR.eachCell(c => { c.font = styleHeader.font; c.fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FFDC2626'} }; c.alignment = styleHeader.alignment; c.border = styleBorder; });
     hR.height = 30;
 
     wsR.eachRow((row, r) => {
-        if (r===1) return;
-        row.eachCell((cell) => {
-            cell.border = styleBorder;
-            if (r % 2 === 0) cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: colorLight } };
-        });
-        const semCell = row.getCell(11);
-        const s = semCell.value;
-        if (s === 'CERRADO') semCell.font = { color: { argb: 'FF16A34A' }, bold: true };
-        if (s === 'VENCIDO') semCell.font = { color: { argb: 'FFDC2626' }, bold: true };
-        if (s === 'URGENTE') semCell.font = { color: { argb: 'FFF59E0B' }, bold: true };
-        row.height = 22;
+      if (r===1) return;
+      row.eachCell((cell) => {
+        cell.border = styleBorder;
+        if (r % 2 === 0) cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: colorLight } };
+      });
+      const semCell = row.getCell(11);
+      const s = semCell.value;
+      if (s === 'CERRADO') semCell.font = { color: { argb: 'FF16A34A' }, bold: true };
+      if (s === 'VENCIDO') semCell.font = { color: { argb: 'FFDC2626' }, bold: true };
+      if (s === 'URGENTE') semCell.font = { color: { argb: 'FFF59E0B' }, bold: true };
+      row.height = 22;
     });
     wsR.views = [{ state:'frozen', ySplit:1 }];
     wsR.autoFilter = { from:'A1', to:'L1' };
@@ -1726,19 +1271,19 @@ async function exportToExcel() {
       {header:'Global',key:'global',width:10},{header:'Estado',key:'status',width:16},{header:'Comentario',key:'comment',width:45},
     ];
     state.history.forEach(h=>wsH.addRow(h));
-    
+
     const hH = wsH.getRow(1);
     hH.eachCell(c => { c.font = styleHeader.font; c.fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FFF59E0B'} }; c.alignment = styleHeader.alignment; c.border = styleBorder; });
     hH.height = 30;
     [9,10,11,12].forEach(c=>wsH.getColumn(c).numFmt = '0.0%');
-    
+
     wsH.eachRow((row, r) => {
-        if (r===1) return;
-        row.eachCell((cell) => {
-            cell.border = styleBorder;
-            if (r % 2 === 0) cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: colorLight } };
-        });
-        row.height = 22;
+      if (r===1) return;
+      row.eachCell((cell) => {
+        cell.border = styleBorder;
+        if (r % 2 === 0) cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: colorLight } };
+      });
+      row.height = 22;
     });
     wsH.views = [{ state:'frozen', ySplit:1 }];
     wsH.autoFilter = { from:'A1', to:'N1' };
@@ -1758,6 +1303,7 @@ function download(blob, filename) {
 let toastTimer;
 function toast(msg) {
   const t = document.getElementById('toast');
+  if (!t) return;
   t.textContent = msg; t.classList.add('show');
   clearTimeout(toastTimer);
   toastTimer = setTimeout(()=>t.classList.remove('show'), 2400);
@@ -1786,14 +1332,22 @@ async function init() {
   state = await loadState();
   if (!state.controlDate) state.controlDate = new Date().toISOString().slice(0,10);
 
-  document.getElementById('controlDate').value = state.controlDate;
-  document.getElementById('controlDate').addEventListener('change', e => {
-    state.controlDate = e.target.value; saveState();
-    render(); toast('Fecha de control: ' + e.target.value);
-  });
+  const cdInput = document.getElementById('controlDate');
+  if (cdInput) {
+    cdInput.value = state.controlDate;
+    cdInput.addEventListener('change', e => {
+      state.controlDate = e.target.value;
+      saveState();
+      render();
+      toast('Fecha de control: ' + e.target.value);
+    });
+  }
 
-  document.getElementById('btnSnapshot').addEventListener('click', takeSnapshot);
-  document.getElementById('btnExportExcel').addEventListener('click', () => {
+  const btnSnap = document.getElementById('btnSnapshot');
+  if (btnSnap) btnSnap.addEventListener('click', takeSnapshot);
+
+  const btnXls = document.getElementById('btnExportExcel');
+  if (btnXls) btnXls.addEventListener('click', () => {
     exportToExcel().catch(err => { console.error(err); toast('Error al exportar: ' + err.message); });
   });
 
@@ -1805,7 +1359,8 @@ async function init() {
     b.addEventListener('click', () => {
       document.querySelectorAll('.app-nav button').forEach(x=>x.classList.remove('active'));
       b.classList.add('active');
-      currentView = b.dataset.view; render();
+      currentView = b.dataset.view;
+      render();
       window.scrollTo({top:0,behavior:'smooth'});
     });
   });
