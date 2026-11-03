@@ -532,30 +532,109 @@ function renderAccounts(app) {
 async function openImportModal(file) {
   const modal = document.getElementById('importModal'), body = document.getElementById('modalBody'), title = document.getElementById('modalTitle'), btnConfirm = document.getElementById('modalConfirm'), btnCancel = document.getElementById('modalCancel');
   title.textContent = `Analizando: ${file.name}`; body.innerHTML = '<div style="text-align:center;padding:30px">⏳ Procesando...</div>'; modal.style.display = 'grid'; btnConfirm.disabled = true;
+  
   try {
     const wb = new ExcelJS.Workbook(); await wb.xlsx.load(await file.arrayBuffer());
     const ws = wb.getWorksheet('Data a llenar') || wb.worksheets[2] || wb.worksheets[0];
-    let total=0, baseOk=0, agasOk=0, baseEmpty=[], agasUnjustified=[];
-    for (let r=2; r<=ws.rowCount; r++) {
-      const row = ws.getRow(r), s = row.getCell(1).value; if (!s || String(s).trim()==='') break;
-      total++; let okBase=true, okAgas=true;
-      for (let c=1; c<=32; c++) { if (row.getCell(c).value==null || String(row.getCell(c).value).trim()==='') { okBase=false; break; } }
-      if (okBase) baseOk++; else if (baseEmpty.length<5) baseEmpty.push(String(s).trim());
-      for (let c=33; c<=45; c++) { if (row.getCell(c).value==null || String(row.getCell(c).value).trim()==='') { okAgas=false; break; } }
-      if (okAgas) agasOk++; else if (agasUnjustified.length<5) agasUnjustified.push(String(s).trim());
+    
+    // 1. Detectar dinámicamente cuántas columnas tiene el Excel
+    let maxCol = 0;
+    const headerRow = ws.getRow(1);
+    headerRow.eachCell((cell, colNumber) => {
+        if (cell.value && String(cell.value).trim() !== '') {
+            maxCol = Math.max(maxCol, colNumber);
+        }
+    });
+    if (maxCol < 32) maxCol = 45; // Respaldo por si no hay encabezados claros
+
+    let totalEquipos = 0;
+    let filledBase = 0;
+    let filledAgas = 0;
+    const baseCols = 32; // A a AF
+    const agasCols = Math.max(1, maxCol - baseCols); // AG hasta la última columna con encabezado
+
+    // 2. Contar datos fila por fila (usando Serial como ID)
+    for (let r = 2; r <= ws.rowCount; r++) {
+        const row = ws.getRow(r);
+        const serial = row.getCell(1).value;
+        
+        // ¡AQUÍ ESTABA EL BUG! Ahora usamos 'continue' en vez de 'break'. 
+        // Si la fila no tiene serial, la salta y sigue leyendo las demás.
+        if (!serial || String(serial).trim() === '') continue; 
+
+        totalEquipos++;
+        
+        // Contar celdas llenas en la Base (A-AF)
+        for (let c = 1; c <= baseCols; c++) {
+            if (row.getCell(c).value != null && String(row.getCell(c).value).trim() !== '') {
+                filledBase++;
+            }
+        }
+        // Contar celdas llenas en AG-AS (desde la 33 hasta el final dinámico)
+        for (let c = baseCols + 1; c <= maxCol; c++) {
+            if (row.getCell(c).value != null && String(row.getCell(c).value).trim() !== '') {
+                filledAgas++;
+            }
+        }
     }
+
+    // 3. Calcular la madurez real (porcentaje de celdas llenas)
+    const totalBaseCells = totalEquipos * baseCols;
+    const totalAgasCells = totalEquipos * agasCols;
+    
+    const pctBase = totalBaseCells > 0 ? (filledBase / totalBaseCells) : 0;
+    const pctAgas = totalAgasCells > 0 ? (filledAgas / totalAgasCells) : 0;
+
+    // 4. Convertir la madurez a cantidad de equipos para mantener tu fórmula 45/35/20
+    const reviewBase = Math.round(totalEquipos * pctBase);
+    const reviewAgas = Math.round(totalEquipos * pctAgas);
+
+    // 5. Autodetectar cuenta por nombre de archivo
     let matchedId = ''; const fname = file.name.toLowerCase();
-    for (const a of state.accounts) { if (fname.includes(a.name.toLowerCase().replace(/\s+/g, '_')) || fname.includes(a.id.toLowerCase())) { matchedId = a.id; break; } }
-    body.innerHTML = `<div style="display:grid;grid-template-columns:1fr auto;gap:12px;margin-bottom:16px;font-size:14px"><span>Total equipos</span><strong>${total}</strong><span>Base completa</span><strong>${baseOk} (${(baseOk/(total||1)*100).toFixed(1)}%)</strong><span>AG-AS completa</span><strong>${agasOk} (${(agasOk/(total||1)*100).toFixed(1)}%)</strong></div>
-      <div style="background:#eff6ff;padding:12px;border-radius:8px;margin-bottom:16px"><select id="importTargetAccount" style="width:100%;padding:10px;"><option value="">-- Cuenta --</option>${state.accounts.map(a => `<option value="${a.id}" ${a.id === matchedId ? 'selected' : ''}>${a.name}</option>`).join('')}</select></div>`;
+    for (const a of state.accounts) { 
+        if (fname.includes(a.name.toLowerCase().replace(/\s+/g, '_')) || fname.includes(a.id.toLowerCase())) { matchedId = a.id; break; } 
+    }
+
+    body.innerHTML = `
+      <div style="display:grid;grid-template-columns:1fr auto;gap:12px;margin-bottom:16px;font-size:14px">
+        <span>Total equipos (Seriales válidos)</span><strong>${totalEquipos}</strong>
+        <span>Madurez Base (A-AF)</span><strong>${(pctBase*100).toFixed(1)}% (${reviewBase} equipos equivalentes)</strong>
+        <span>Madurez AG-AS</span><strong>${(pctAgas*100).toFixed(1)}% (${reviewAgas} equipos equivalentes)</strong>
+      </div>
+      <div style="background:#eff6ff;padding:12px;border-radius:8px;margin-bottom:16px">
+        <select id="importTargetAccount" style="width:100%;padding:10px;">
+          <option value="">-- Seleccionar Cuenta --</option>
+          ${state.accounts.map(a => `<option value="${a.id}" ${a.id === matchedId ? 'selected' : ''}>${a.name} (Avance actual: ${fmtPct(calcGlobal(a))})</option>`).join('')}
+        </select>
+        <p class="help" style="margin-top:8px">El sistema solo actualizará los datos si esta carga tiene mayor madurez que la anterior (para no perder avances).</p>
+      </div>`;
+      
     btnConfirm.disabled = false;
     btnConfirm.onclick = () => {
-      const accId = document.getElementById('importTargetAccount').value; if (!accId) { toast('Seleccioná cuenta'); return; }
+      const accId = document.getElementById('importTargetAccount').value; 
+      if (!accId) { toast('Seleccioná cuenta'); return; }
       const acc = state.accounts.find(a => a.id === accId);
-      acc.total=total; acc.reviewed=baseOk; acc.baseCount=baseOk; acc.agasCount=agasOk; acc.qaCount=Math.min(acc.qaCount, agasOk); acc.updateDate=state.controlDate;
-      saveState(); modal.style.display = 'none'; render(); toast(`✓ ${acc.name} actualizada`);
+      
+      // Lógica de actualización inteligente: solo sobreescribir si mejora la madurez
+      const isBetter = (totalEquipos > acc.total) || (reviewBase > acc.baseCount) || (reviewAgas > acc.agasCount);
+
+      if (isBetter) {
+          acc.total = totalEquipos; 
+          acc.reviewed = totalEquipos;
+          acc.baseCount = reviewBase;
+          acc.agasCount = reviewAgas;
+          acc.qaCount = Math.min(acc.qaCount, reviewAgas); // El QA se ajusta al techo
+          acc.updateDate = state.controlDate;
+          saveState(); modal.style.display = 'none'; render(); 
+          toast(`✓ ${acc.name} actualizada con nueva madurez`);
+      } else {
+          modal.style.display = 'none';
+          toast(`⚠ Archivo ignorado: El avance actual en el sistema es mayor o igual a esta carga.`);
+      }
     };
-  } catch (err) { body.innerHTML = `<div style="color:red;padding:20px">Error: ${err.message}</div>`; }
+  } catch (err) { 
+    body.innerHTML = `<div style="color:red;padding:20px">Error: ${err.message}</div>`; 
+  }
   btnCancel.onclick = () => { modal.style.display = 'none'; };
 }
 
