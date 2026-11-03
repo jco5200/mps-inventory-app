@@ -384,8 +384,7 @@ function renderDashboard(app) {
     <div class="card">
       <h2>Resumen por cuenta</h2>
       <div class="table-wrap"><table>
-        <thead><tr><th>Cuenta</th><th>OSAs</th><th>Total</th><th>Revisados</th><th>Base</th><th>AG-AS</th><th>QA</th><th>Global</th><th>Meta</th><th>Brecha</th><th>Fase</th><th>Estado</th></tr></thead>
-        <tbody>${accs.map(a=>{
+      <thead><tr><th>Cuenta</th><th>OSAs</th><th>Total</th><th>Revisados</th><th>% Col A-AF</th><th>Col AG-AS</th><th>QA</th><th>Global</th><th>Meta</th><th>Brecha</th><th>Fase</th><th>Estado</th></tr></thead>        <tbody>${accs.map(a=>{
           const g=calcGlobal(a), m=calcMeta(state.controlDate), gap=g-m, st=calcStatus(a);
           return `<tr><td><strong>${a.name}</strong></td><td>${a.osas}</td><td>${a.total}</td><td>${a.reviewed}</td>
             <td>${fmtPct(pctBase(a))}</td><td>${fmtPct(pctAGAS(a))}</td><td>${fmtPct(pctQA(a))}</td>
