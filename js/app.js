@@ -340,11 +340,17 @@ function renderDashboard(app) {
     let sit, comment = '';
     if (state.controlDate < h.date) {
       sit = 'PRÓXIMO'; comment = 'Aún no es la fecha de evaluación.'; hitosProximos++;
-    } else if (h.name === 'Preparación') {
+   
+       } else if (h.name === 'Preparación') {
       const pending = accs.filter(a => !(a.responsible && a.total > 0));
-      if (pending.length === 0) { sit = 'CUMPLIDO · 100%'; comment = 'Todas las cuentas listas.'; hitosCumplidos++; }
-      else if (pending.length === 1 && pending[0].id === 'provida') { sit = 'CUMPLIDO · EXCEPCIÓN'; comment = 'PROVIDA excluida (No está en DCC).'; hitosCumplidos++; }
-      else { sit = 'PENDIENTE'; comment = `Falta completar: ${pending.map(p=>p.name).join(', ')}`; hitosPendientes++; }
+      if (pending.length === 0) { 
+          sit = 'CUMPLIDO · 100%'; comment = 'Todas las cuentas listas.'; hitosCumplidos++; 
+      } else if (pending.length === 1 && (pending[0].id === 'provida' || pending[0].id === 'uai')) { 
+          sit = 'CUMPLIDO · EXCEPCIÓN'; comment = `${pending[0].name} excluida (Justificada).`; hitosCumplidos++; 
+      } else { 
+          sit = 'PENDIENTE'; comment = `Falta completar: ${pending.map(p=>p.name).join(', ')}`; hitosPendientes++; 
+      }
+       
     } else {
       if (avgProgress >= h.meta) { sit = 'CUMPLIDO · '+fmtPct(avgProgress); comment = 'Meta alcanzada.'; hitosCumplidos++; }
       else { sit = 'PENDIENTE'; comment = `Brecha global de ${(h.meta*100 - avgProgress*100).toFixed(1)} pts.`; hitosPendientes++; }
@@ -549,82 +555,70 @@ function renderAccounts(app) {
 
 async function openImportModal(file) {
   const modal = document.getElementById('importModal'), body = document.getElementById('modalBody'), title = document.getElementById('modalTitle'), btnConfirm = document.getElementById('modalConfirm'), btnCancel = document.getElementById('modalCancel');
-  title.textContent = `Analizando: ${file.name}`; body.innerHTML = '<div style="text-align:center;padding:30px">⏳ Procesando...</div>'; modal.style.display = 'grid'; btnConfirm.disabled = true;
+  title.textContent = `Analizando: ${file.name}`; body.innerHTML = '<div style="text-align:center;padding:30px">⏳ Procesando y auditando calidad...</div>'; modal.style.display = 'grid'; btnConfirm.disabled = true;
   
   try {
     const wb = new ExcelJS.Workbook(); await wb.xlsx.load(await file.arrayBuffer());
     const ws = wb.getWorksheet('Data a llenar') || wb.worksheets[2] || wb.worksheets[0];
     
-    // 1. Detectar dinámicamente cuántas columnas tiene el Excel
     let maxCol = 0;
     const headerRow = ws.getRow(1);
-    headerRow.eachCell((cell, colNumber) => {
-        if (cell.value && String(cell.value).trim() !== '') {
-            maxCol = Math.max(maxCol, colNumber);
-        }
-    });
-    if (maxCol < 32) maxCol = 45; // Respaldo por si no hay encabezados claros
+    headerRow.eachCell((cell, colNumber) => { if (cell.value && String(cell.value).trim() !== '') maxCol = Math.max(maxCol, colNumber); });
+    if (maxCol < 32) maxCol = 45;
 
-    let totalEquipos = 0;
-    let filledBase = 0;
-    let filledAgas = 0;
-    const baseCols = 32; // A a AF
-    const agasCols = Math.max(1, maxCol - baseCols); // AG hasta la última columna con encabezado
+    let totalEquipos = 0, filledBase = 0, filledAgas = 0;
+    let qaErrores = 0;
+    let qaDetalles = [];
+    const serialesUnicos = new Set();
+    const baseCols = 32;
 
-    // 2. Contar datos fila por fila (usando Serial como ID)
     for (let r = 2; r <= ws.rowCount; r++) {
         const row = ws.getRow(r);
         const serial = row.getCell(1).value;
         
-        // ¡AQUÍ ESTABA EL BUG! Ahora usamos 'continue' en vez de 'break'. 
-        // Si la fila no tiene serial, la salta y sigue leyendo las demás.
         if (!serial || String(serial).trim() === '') continue; 
-
+        const serialStr = String(serial).trim();
         totalEquipos++;
         
-        // Contar celdas llenas en la Base (A-AF)
-        for (let c = 1; c <= baseCols; c++) {
-            if (row.getCell(c).value != null && String(row.getCell(c).value).trim() !== '') {
-                filledBase++;
-            }
-        }
-        // Contar celdas llenas en AG-AS (desde la 33 hasta el final dinámico)
-        for (let c = baseCols + 1; c <= maxCol; c++) {
-            if (row.getCell(c).value != null && String(row.getCell(c).value).trim() !== '') {
-                filledAgas++;
-            }
-        }
+        // --- AUDITORÍA QA ---
+        if (serialesUnicos.has(serialStr)) { qaErrores++; if (qaDetalles.length < 3) qaDetalles.push(`Serial duplicado: ${serialStr}`); }
+        serialesUnicos.add(serialStr);
+
+        const email = row.getCell(16).value;
+        if (email && !String(email).includes('@') && String(email) !== 'No Aplica' && String(email) !== 'No aplica') { qaErrores++; if (qaDetalles.length < 3) qaDetalles.push(`Email inválido: ${serialStr}`); }
+        
+        const ip = row.getCell(8).value;
+        if (ip && !/^(\d{1,3}\.){3}\d{1,3}$/.test(String(ip)) && String(ip) !== '0.0.0.0' && String(ip) !== '1.1.1.1' && String(ip) !== 'No Aplica') { qaErrores++; if (qaDetalles.length < 3) qaDetalles.push(`IP inválida: ${serialStr}`); }
+
+        // --- MADUREZ ---
+        for (let c = 1; c <= baseCols; c++) { if (row.getCell(c).value != null && String(row.getCell(c).value).trim() !== '') filledBase++; }
+        for (let c = baseCols + 1; c <= maxCol; c++) { if (row.getCell(c).value != null && String(row.getCell(c).value).trim() !== '') filledAgas++; }
     }
 
-    // 3. Calcular la madurez real (porcentaje de celdas llenas)
-    const totalBaseCells = totalEquipos * baseCols;
-    const totalAgasCells = totalEquipos * agasCols;
-    
-    const pctBase = totalBaseCells > 0 ? (filledBase / totalBaseCells) : 0;
-    const pctAgas = totalAgasCells > 0 ? (filledAgas / totalAgasCells) : 0;
-
-    // 4. Convertir la madurez a cantidad de equipos para mantener tu fórmula 45/35/20
+    const pctBase = totalEquipos > 0 ? (filledBase / (totalEquipos * baseCols)) : 0;
+    const pctAgas = totalEquipos > 0 && maxCol > baseCols ? (filledAgas / (totalEquipos * (maxCol - baseCols))) : 0;
     const reviewBase = Math.round(totalEquipos * pctBase);
     const reviewAgas = Math.round(totalEquipos * pctAgas);
+    
+    // QA Final (si no hay equipos, es 0. Si hay, total menos errores)
+    const qaOk = Math.max(0, totalEquipos - qaErrores);
 
-    // 5. Autodetectar cuenta por nombre de archivo
     let matchedId = ''; const fname = file.name.toLowerCase();
-    for (const a of state.accounts) { 
-        if (fname.includes(a.name.toLowerCase().replace(/\s+/g, '_')) || fname.includes(a.id.toLowerCase())) { matchedId = a.id; break; } 
-    }
+    for (const a of state.accounts) { if (fname.includes(a.name.toLowerCase().replace(/\s+/g, '_')) || fname.includes(a.id.toLowerCase())) { matchedId = a.id; break; } }
 
     body.innerHTML = `
       <div style="display:grid;grid-template-columns:1fr auto;gap:12px;margin-bottom:16px;font-size:14px">
-        <span>Total equipos (Seriales válidos)</span><strong>${totalEquipos}</strong>
-        <span>Madurez Base (A-AF)</span><strong>${(pctBase*100).toFixed(1)}% (${reviewBase} equipos equivalentes)</strong>
-        <span>Madurez AG-AS</span><strong>${(pctAgas*100).toFixed(1)}% (${reviewAgas} equipos equivalentes)</strong>
+        <span>Total equipos válidos</span><strong>${totalEquipos}</strong>
+        <span>Madurez Col A-AF</span><strong>${(pctBase*100).toFixed(1)}% (${reviewBase} equipos eq.)</strong>
+        <span>Madurez Col AG-AS</span><strong>${(pctAgas*100).toFixed(1)}% (${reviewAgas} equipos eq.)</strong>
+        <span>QA Automático (Auditoría)</span><strong style="color:${qaErrores>0?'var(--danger)':'var(--success)'}">${qaOk} OK / ${qaErrores} errores</strong>
       </div>
+      ${qaErrores > 0 ? `<div style="background:#fef2f2;color:#991b1b;padding:10px;border-radius:6px;font-size:12px;margin-bottom:16px"><strong>⚠ Errores detectados:</strong> ${qaDetalles.join(' | ')}...</div>` : ''}
       <div style="background:#eff6ff;padding:12px;border-radius:8px;margin-bottom:16px">
         <select id="importTargetAccount" style="width:100%;padding:10px;">
           <option value="">-- Seleccionar Cuenta --</option>
           ${state.accounts.map(a => `<option value="${a.id}" ${a.id === matchedId ? 'selected' : ''}>${a.name} (Avance actual: ${fmtPct(calcGlobal(a))})</option>`).join('')}
         </select>
-        <p class="help" style="margin-top:8px">El sistema solo actualizará los datos si esta carga tiene mayor madurez que la anterior (para no perder avances).</p>
       </div>`;
       
     btnConfirm.disabled = false;
@@ -633,28 +627,26 @@ async function openImportModal(file) {
       if (!accId) { toast('Seleccioná cuenta'); return; }
       const acc = state.accounts.find(a => a.id === accId);
       
-      // Lógica de actualización inteligente: solo sobreescribir si mejora la madurez
-      const isBetter = (totalEquipos > acc.total) || (reviewBase > acc.baseCount) || (reviewAgas > acc.agasCount);
+      const isBetter = (totalEquipos > acc.total) || (reviewBase > acc.baseCount) || (reviewAgas > acc.agasCount) || (qaOk > acc.qaCount);
 
       if (isBetter) {
           acc.total = totalEquipos; 
           acc.reviewed = totalEquipos;
           acc.baseCount = reviewBase;
           acc.agasCount = reviewAgas;
-          acc.qaCount = Math.min(acc.qaCount, reviewAgas); // El QA se ajusta al techo
+          acc.qaCount = qaOk; // El QA se actualiza automáticamente
           acc.updateDate = state.controlDate;
           saveState(); modal.style.display = 'none'; render(); 
-          toast(`✓ ${acc.name} actualizada con nueva madurez`);
+          toast(`✓ ${acc.name} actualizada (QA: ${qaOk})`);
       } else {
           modal.style.display = 'none';
-          toast(`⚠ Archivo ignorado: El avance actual en el sistema es mayor o igual a esta carga.`);
+          toast(`⚠ Archivo ignorado: El avance en el sistema es mayor o igual.`);
       }
     };
-  } catch (err) { 
-    body.innerHTML = `<div style="color:red;padding:20px">Error: ${err.message}</div>`; 
-  }
+  } catch (err) { body.innerHTML = `<div style="color:red;padding:20px">Error: ${err.message}</div>`; }
   btnCancel.onclick = () => { modal.style.display = 'none'; };
 }
+
 
 function openReunionModal(accountId) {
   const acc = state.accounts.find(a=>a.id===accountId), st = calcStatus(acc), g = calcGlobal(acc), m = calcMeta(state.controlDate), gap = g - m;
