@@ -488,10 +488,12 @@ function renderPlan(app) {
 function renderAccounts(app) {
   const warnings = validateAll();
   const lastSnap = getLastSnapshotByAccount();
+  
   app.innerHTML = `<div class="card">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px"><div><h2>Inventario por Cuenta</h2><p class="help">Los % se calculan solos.</p></div><button class="btn btn-primary" id="btnImportOSA">📂 Importar Excel OSA</button></div>
-    <div class="table-wrap"><table><thead><tr><th>Cuenta</th><th>OSAs</th><th>Responsable</th><th>Total</th><th>Revisados</th><th>Base</th><th>AG-AS</th><th>QA</th><th>Global</th><th>Estado</th><th>Bloqueo</th></tr></thead><tbody id="accountsBody"></tbody></table></div>
+    <div class="table-wrap"><table><thead><tr><th>Cuenta</th><th>OSAs</th><th>Responsable</th><th>Total</th><th>Revisados</th><th>% Base Col A-AF</th><th>AG-AS</th><th>QA</th><th>Global</th><th>Estado</th><th>Bloqueo</th><th>Acción</th></tr></thead><tbody id="accountsBody"></tbody></table></div>
   </div>`;
+  
   const tbody = document.getElementById('accountsBody');
   tbody.innerHTML = state.accounts.map(a => {
     const g=calcGlobal(a), st=calcStatus(a);
@@ -502,8 +504,10 @@ function renderAccounts(app) {
       <td><input type="number" min="0" value="${a.baseCount}" data-field="baseCount"></td><td><input type="number" min="0" value="${a.agasCount}" data-field="agasCount"></td><td><input type="number" min="0" value="${a.qaCount}" data-field="qaCount"></td>
       <td><strong>${fmtPct(g)}</strong></td><td><span class="badge ${statusClass(st)}">${st}</span></td>
       <td><input type="checkbox" ${a.criticalBlock?'checked':''} data-field="criticalBlock"></td>
+      <td><button class="btn btn-sm btn-danger" data-reset="${a.id}" title="Borrar carga de esta cuenta">🗑️</button></td>
     </tr>`;
   }).join('');
+  
   tbody.querySelectorAll('input').forEach(inp => {
     inp.addEventListener('change', e => {
       const tr = e.target.closest('tr'), acc = state.accounts.find(a=>a.id===tr.dataset.id), f = e.target.dataset.field;
@@ -521,6 +525,20 @@ function renderAccounts(app) {
       saveState(); render();
     });
   });
+
+  // NUEVO: Lógica para resetear una cuenta individual
+  tbody.querySelectorAll('[data-reset]').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      const accId = e.target.dataset.reset;
+      const acc = state.accounts.find(a => a.id === accId);
+      if (!confirm(`¿Borrar todos los datos cargados de la cuenta ${acc.name}?`)) return;
+      acc.total = 0; acc.reviewed = 0; acc.baseCount = 0; acc.agasCount = 0; acc.qaCount = 0;
+      acc.updateDate = '';
+      saveState(); render();
+      toast(`Datos de ${acc.name} eliminados`);
+    });
+  });
+
   document.getElementById('btnImportOSA').addEventListener('click', () => {
     if (typeof ExcelJS === 'undefined') { toast('ExcelJS no cargó'); return; }
     const input = document.createElement('input'); input.type = 'file'; input.accept = '.xlsx,.xls';
@@ -688,12 +706,38 @@ function renderSchedule(app) {
 async function renderBackups(app) {
   const status = getBackupStatus(); let snapshots = []; try { snapshots = await dbAll(STORE_SNAPSHOTS); } catch (e) {}
   const recent = snapshots.slice(-20).reverse(), hasFile = !!fileHandle;
+  
   app.innerHTML = `<div class="backup-hero"><h2>🛡 Sistema de respaldo</h2><div class="backup-grid"><div class="backup-card ok"><div class="label">Capa 1 · localStorage</div><div class="value">✓ Activo</div></div><div class="backup-card ok"><div class="label">Capa 2 · IndexedDB</div><div class="value">✓ Activo</div></div><div class="backup-card ok"><div class="label">Capa 3 · Snapshots</div><div class="value">${snapshots.length} versiones</div></div><div class="backup-card ${hasFile?'ok':'warn'}"><div class="label">Capa 4 · Carpeta</div><div class="value">${hasFile?'✓ Configurada':'⚠ No configurada'}</div></div><div class="backup-card ok"><div class="label">Capa 5 · Descarga JSON</div><div class="value">✓ Disponible</div></div></div></div>
+    
     <div class="card" style="border-left:4px solid var(--${status.level})"><h2>Estado: ${status.msg}</h2><p class="help">${status.long}</p>${!hasFile ? `<div style="margin-top:16px;padding:16px;background:#fffbeb;border-radius:8px"><button class="btn btn-primary" id="btnPickFolder">📁 Elegir carpeta de respaldo</button></div>` : ''}</div>
-    <div class="card"><div style="display:flex;justify-content:space-between;margin-bottom:16px"><h2>Máquina del tiempo · ${snapshots.length} versiones</h2><div style="display:flex;gap:8px"><button class="btn" id="btnExportNow">⬇ JSON ahora</button><button class="btn btn-primary" id="btnImportRestore">⬆ Restaurar</button></div></div>${recent.length === 0 ? '<div class="empty">Sin versiones</div>' : `<div class="snapshot-list">${recent.map(s => `<div class="snapshot-item"><div><div class="snapshot-date">${new Date(s.date).toLocaleString('es-CL')}</div></div><button class="btn btn-sm" data-restore="${s.id}">Restaurar</button><button class="btn-del-snap" data-del="${s.id}">🗑️ Eliminar</button></div>`).join('')}</div>`}</div>`;
+    
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px">
+        <h2 style="margin:0">Máquina del tiempo · ${snapshots.length} versiones</h2>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn" id="btnExportNow">⬇ JSON ahora</button>
+          <button class="btn btn-primary" id="btnImportRestore">⬆ Restaurar</button>
+          <button class="btn btn-danger" id="btnDeleteAllSnapshots" ${snapshots.length === 0 ? 'disabled' : ''}>🗑️ Borrar todos</button>
+        </div>
+      </div>
+      ${recent.length === 0 ? '<div class="empty">Sin versiones</div>' : `<div class="snapshot-list">${recent.map(s => `<div class="snapshot-item"><div><div class="snapshot-date">${new Date(s.date).toLocaleString('es-CL')}</div></div><button class="btn btn-sm" data-restore="${s.id}">Restaurar</button><button class="btn-del-snap" data-del="${s.id}">🗑️ Eliminar</button></div>`).join('')}</div>`}
+    </div>`;
+    
   document.getElementById('btnPickFolder')?.addEventListener('click', pickBackupFolder);
   document.getElementById('btnExportNow')?.addEventListener('click', () => { const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' }); download(blob, `mps_backup.json`); });
   document.getElementById('btnImportRestore')?.addEventListener('click', () => { const input = document.createElement('input'); input.type='file'; input.accept='.json'; input.onchange=async e=>{ const f=e.target.files[0]; if(!f)return; const txt=await f.text(); try{ const data=JSON.parse(txt); if(!data.accounts)throw new Error('Inválido'); if(!confirm('¿Reemplazar datos?'))return; await addSnapshot(state); state=data; await dbPut(STORE_CURRENT,'current',state); saveState(); render(); }catch(err){toast('Error');} }; input.click(); });
+  
+  // NUEVO: Botón para borrar todos los respaldos
+  document.getElementById('btnDeleteAllSnapshots')?.addEventListener('click', async () => {
+    if (!confirm('¿Estás seguro de eliminar TODOS los respaldos de la máquina del tiempo? Esta acción no se puede deshacer.')) return;
+    try {
+      const all = await dbAll(STORE_SNAPSHOTS);
+      for (const s of all) { await dbDelete(STORE_SNAPSHOTS, s.id); }
+      toast('✓ Todos los respaldos eliminados');
+      render();
+    } catch (e) { toast('Error al eliminar respaldos'); }
+  });
+
   app.querySelectorAll('[data-restore]').forEach(btn => { btn.addEventListener('click', async () => { const snap = snapshots.find(s => s.id === +btn.dataset.restore); if (!snap) return; if (!confirm('¿Restaurar?')) return; await addSnapshot(state); state = JSON.parse(JSON.stringify(snap.state)); await dbPut(STORE_CURRENT, 'current', state); saveState(); render(); }); });
   app.querySelectorAll('[data-del]').forEach(btn => { btn.addEventListener('click', async () => { if (!confirm('¿Eliminar?')) return; await dbDelete(STORE_SNAPSHOTS, +btn.dataset.del); render(); }); });
 }
