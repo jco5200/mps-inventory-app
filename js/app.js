@@ -328,6 +328,188 @@ function render() {
 
 /* ========== VISTAS ========== */
 
+function renderDashboard(app) {
+  const accs = state.accounts;
+  const totalOSAs = accs.reduce((s,a)=>s+(+a.osas||0),0);
+  const avgProgress = accs.reduce((s,a)=>s+calcGlobal(a),0)/accs.length;
+  const totalReviewed = accs.reduce((s,a)=>s+(+a.reviewed||0),0);
+  const totalEquip = accs.reduce((s,a)=>s+(+a.total||0),0);
+
+  const counts = { FINALIZADO:0, 'AL DÍA':0, 'EN PLAZO':0, 'ATRASO MENOR':0, 'ATRASO CRÍTICO':0, 'CRÍTICO':0, 'SIN DATOS':0 };
+  accs.forEach(a => counts[calcStatus(a)]++);
+
+  const warnings = validateAll();
+  
+  // Recopilar alertas de QA de los Excels
+  const qaAlerts = [];
+  accs.forEach(a => {
+    if (a.qaDetails && a.qaDetails.length > 0) {
+      a.qaDetails.forEach(det => qaAlerts.push({ account: a.name, msg: det }));
+    }
+  });
+
+  const week = getCurrentWeek(state.controlDate);
+  const prep = isPreparationPhase(state.controlDate);
+  const prepDone = accs.filter(a => a.responsible && a.total > 0).length;
+  const bStatus = getBackupStatus();
+
+  // --- CÁLCULO DE HITOS ---
+  const milestones = [
+    {name:'Preparación', date:'2026-10-30', meta:0.10},
+    {name:'Inventario base', date:'2026-11-06', meta:0.55},
+    {name:'Corte AG-AS', date:'2026-11-13', meta:0.75},
+    {name:'Cierre AG-AS', date:'2026-11-20', meta:0.90},
+    {name:'QA', date:'2026-11-27', meta:0.98},
+    {name:'Cierre', date:'2026-11-30', meta:1.00},
+  ];
+  let hitosCumplidos = 0, hitosProximos = 0, hitosPendientes = 0;
+
+  const milestoneData = milestones.map(h => {
+    let sit, comment = '';
+    if (state.controlDate < h.date) {
+      sit = 'PRÓXIMO'; comment = 'Aún no es la fecha de evaluación.'; hitosProximos++;
+    } else if (h.name === 'Preparación') {
+      const pending = accs.filter(a => !(a.responsible && a.total > 0));
+      if (pending.length === 0) { 
+          sit = 'CUMPLIDO · 100%'; comment = 'Todas las cuentas listas.'; hitosCumplidos++; 
+      } else if (pending.length === 1 && (pending[0].id === 'provida' || pending[0].id === 'uai')) { 
+          sit = 'CUMPLIDO · EXCEPCIÓN'; comment = `${pending[0].name} excluida (Justificada).`; hitosCumplidos++; 
+      } else { 
+          sit = 'PENDIENTE'; comment = `Falta completar: ${pending.map(p=>p.name).join(', ')}`; hitosPendientes++; 
+      }
+    } else {
+      if (avgProgress >= h.meta) { sit = 'CUMPLIDO · '+fmtPct(avgProgress); comment = 'Meta alcanzada.'; hitosCumplidos++; }
+      else { sit = 'PENDIENTE'; comment = `Brecha global de ${(h.meta*100 - avgProgress*100).toFixed(1)} pts.`; hitosPendientes++; }
+    }
+    return { ...h, sit, comment };
+  });
+
+  app.innerHTML = `
+    ${bStatus.level !== 'ok' ? `<div class="card" style="border-left:4px solid var(--${bStatus.level === 'danger' ? 'danger' : 'warning'});background:${bStatus.level === 'danger' ? '#fef2f2' : '#fffbeb'}">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
+        <div><strong style="color:${bStatus.level === 'danger' ? '#991b1b' : '#92400e'}">${bStatus.msg}</strong><div class="help">${bStatus.long}</div></div>
+        <button class="btn btn-primary" onclick="document.querySelector('[data-view=backups]').click()">Ir a Respaldos →</button>
+      </div>
+    </div>` : ''}
+    
+    ${warnings.length ? `<div class="card" style="border-left:4px solid var(--warning);background:#fffbeb">
+      <h2 style="color:#92400e;font-size:14px">⚠ ${warnings.length} alerta(s) de integridad en el sistema</h2>
+      <ul style="margin:8px 0 0 20px;font-size:13px;color:#78350f">
+        ${warnings.slice(0,5).map(w=>`<li><strong>${w.account}</strong>: ${w.msg}</li>`).join('')}
+        ${warnings.length>5?`<li>… y ${warnings.length-5} más</li>`:''}
+      </ul></div>` : ''}
+
+    ${qaAlerts.length ? `<div class="card" style="border-left:4px solid var(--danger);background:#fef2f2">
+      <h2 style="color:#991b1b;font-size:14px">🚨 ${qaAlerts.length} error(es) de Calidad (QA) detectados en archivos Excel</h2>
+      <ul style="margin:8px 0 0 20px;font-size:13px;color:#7f1d1d;max-height:150px;overflow-y:auto">
+        ${qaAlerts.slice(0,15).map(w=>`<li><strong>${w.account}</strong>: ${w.msg}</li>`).join('')}
+        ${qaAlerts.length>15?`<li>… y ${qaAlerts.length-15} más</li>`:''}
+      </ul>
+      <p class="help" style="margin-top:8px;color:#991b1b">Por favor, solicita a los OSAs corregir estos puntos en sus archivos.</p>
+    </div>` : ''}
+
+    <div class="kpi-grid">
+      <div class="kpi"><div class="kpi-label">Cuentas</div><div class="kpi-value">12</div><div class="kpi-sub">${totalOSAs} OSAs asignados</div></div>
+      <div class="kpi success"><div class="kpi-label">Avance promedio</div><div class="kpi-value">${fmtPct(avgProgress)}</div><div class="kpi-sub">Meta ${prep?'—':fmtPct(week.meta)}</div></div>
+      <div class="kpi success"><div class="kpi-label">Al día</div><div class="kpi-value">${counts['AL DÍA']+counts.FINALIZADO+counts['EN PLAZO']}</div><div class="kpi-sub">${counts['ATRASO MENOR']} en atraso menor</div></div>
+      <div class="kpi danger"><div class="kpi-label">Atraso crítico</div><div class="kpi-value">${counts['ATRASO CRÍTICO']+counts['CRÍTICO']}</div><div class="kpi-sub">${counts['SIN DATOS']} sin datos</div></div>
+      <div class="kpi"><div class="kpi-label">Equipos revisados</div><div class="kpi-value">${totalReviewed}</div><div class="kpi-sub">de ${totalEquip} totales</div></div>
+    </div>
+
+    ${prep ? `<div class="card"><h2>Hito de Preparación · ${prepDone}/12 cuentas listas</h2><p class="help">Cada cuenta debe tener responsable y total definidos. Se cumple antes del 30-10-2026.</p></div>` : ''}
+
+    <div class="charts-row">
+      <div class="card"><h2>Avance vs Meta por cuenta</h2><div class="chart-container"><canvas id="chartProgress"></canvas></div></div>
+      <div class="card"><h2>Distribución de estados</h2><div class="chart-container"><canvas id="chartStatus"></canvas></div></div>
+    </div>
+
+    <div class="card">
+      <h2>Resumen por cuenta</h2>
+               <div class="table-wrap"><table>
+            <thead><tr><th>Cuenta</th><th>OSAs</th><th>Total</th><th>Revisados</th><th>% Col A-AF</th><th>Col AG-AS</th><th>QA</th><th>Global</th><th>Meta</th><th>Brecha</th><th>Fase</th><th>Estado</th></tr></thead>
+            <tbody>${accs.map(a=>{
+              const g=calcGlobal(a), m=calcMeta(state.controlDate), gap=g-m, st=calcStatus(a);
+              return `<tr><td><strong>${a.name}</strong></td><td>${a.osas}</td><td>${a.total}</td><td>${a.reviewed}</td>
+                <td>${fmtPct(pctBase(a))}</td><td>${fmtPct(pctAGAS(a))}</td><td>${fmtPct(pctQA(a))}</td>
+                <td><strong>${fmtPct(g)}</strong></td><td>${fmtPct(m)}</td>
+                <td style="color:${gap<0?'var(--danger)':'var(--success)'}">${(gap*100).toFixed(1)} pts</td>
+                <td>${calcPhase(a)}</td><td><span class="badge ${statusClass(st)}">${st}</span></td></tr>`;}).join('')}
+            </tbody>
+          </table></div>
+    </div>
+
+    <div class="charts-row">
+      <div class="card">
+        <h2>Hitos del proyecto</h2>
+        <div class="table-wrap"><table>
+          <thead><tr><th>Hito</th><th>Fecha</th><th>Meta</th><th>Resultado</th><th>Situación</th><th>Comentarios / Justificación</th></tr></thead>
+          <tbody>${milestoneData.map(h=>{
+            const cls = h.sit.startsWith('CUMPLIDO')?'badge-verde':h.sit==='PENDIENTE'?'badge-rojo':'badge-sin-fecha';
+            return `<tr><td>${h.name}</td><td>${h.date}</td><td>${fmtPct(h.meta)}</td><td>${fmtPct(avgProgress)}</td>
+              <td><span class="badge ${cls}">${h.sit}</span></td>
+              <td style="font-size:12px;color:var(--gray-600)">${h.comment}</td></tr>`;
+          }).join('')}
+          </tbody>
+        </table></div>
+      </div>
+      <div class="card">
+        <h2>Estado de Hitos</h2>
+        <div class="chart-container"><canvas id="chartMilestones"></canvas></div>
+      </div>
+    </div>
+  `;
+
+  if (typeof Chart === 'undefined') {
+    console.warn('Chart.js no disponible; los gráficos no se muestran.');
+    return;
+  }
+
+  try {
+    charts.progress = new Chart(document.getElementById('chartProgress'), {
+      type:'bar',
+      data:{ labels:accs.map(a=>a.name), datasets:[
+        { label:'Avance', data:accs.map(a=>+(calcGlobal(a)*100).toFixed(1)), backgroundColor:'#2563eb', borderRadius:6 },
+        { label:'Meta', data:accs.map(()=>+(calcMeta(state.controlDate)*100).toFixed(1)), backgroundColor:'#94a3b8', borderRadius:6 },
+      ]},
+      options:{ responsive:true, maintainAspectRatio:false,
+        scales:{ y:{ beginAtZero:true, max:100, ticks:{ callback:v=>v+'%' } } },
+        plugins:{
+          legend:{ position:'bottom' },
+          datalabels: { anchor: 'end', align: 'top', formatter: (val) => val > 0 ? val + '%' : '', font: { size: 10, weight: 'bold' }, color: '#374151' }
+        }
+      }
+    });
+
+    charts.status = new Chart(document.getElementById('chartStatus'), {
+      type:'doughnut',
+      data:{ labels:['Al día / En plazo','Atraso menor','Atraso crítico','Finalizado','Sin datos'], datasets:[{
+        data:[counts['AL DÍA']+counts['EN PLAZO'],counts['ATRASO MENOR'],counts['ATRASO CRÍTICO']+counts['CRÍTICO'],counts.FINALIZADO,counts['SIN DATOS']],
+        backgroundColor:['#16a34a','#f59e0b','#dc2626','#0d9488','#9ca3af'], borderWidth:0,
+      }]},
+      options:{ responsive:true, maintainAspectRatio:false,
+        plugins:{
+          legend:{ position:'bottom' },
+          datalabels: { color: '#fff', font: { size: 12, weight: 'bold' }, formatter: (val) => val > 0 ? val : '' }
+        }
+      }
+    });
+
+    charts.milestones = new Chart(document.getElementById('chartMilestones'), {
+      type:'doughnut',
+      data:{ labels:['Cumplidos','Próximos','Pendientes'], datasets:[{
+        data:[hitosCumplidos, hitosProximos, hitosPendientes],
+        backgroundColor:['#16a34a', '#f59e0b', '#dc2626'], borderWidth:0,
+      }]},
+      options:{ responsive:true, maintainAspectRatio:false,
+        plugins:{
+          legend:{ position:'bottom' },
+          datalabels: { color: '#fff', font: { size: 14, weight: 'bold' }, formatter: (val) => val > 0 ? val : '' }
+        }
+      }
+    });
+  } catch (e) { console.warn('Error al dibujar gráficos:', e); }
+}
+
 async function openImportModal(file) {
   const modal = document.getElementById('importModal'), body = document.getElementById('modalBody'), title = document.getElementById('modalTitle'), btnConfirm = document.getElementById('modalConfirm'), btnCancel = document.getElementById('modalCancel');
   title.textContent = `Analizando: ${file.name}`; body.innerHTML = '<div style="text-align:center;padding:30px">⏳ Procesando y auditando calidad...</div>'; modal.style.display = 'grid'; btnConfirm.disabled = true;
@@ -355,7 +537,7 @@ async function openImportModal(file) {
         const serialStr = String(serial).trim();
         totalEquipos++;
         
-        // --- AUDITORÍA QA (Guardando hasta 50 detalles) ---
+        // --- AUDITORÍA QA (Guardando detalles) ---
         if (serialesUnicos.has(serialStr)) { 
             qaErrores++; 
             if(qaDetalles.length < 50) qaDetalles.push(`Serial duplicado: ${serialStr}`); 
@@ -488,7 +670,6 @@ function renderAccounts(app) {
     });
   });
 
-  // NUEVO: Lógica para resetear una cuenta individual
   tbody.querySelectorAll('[data-reset]').forEach(btn => {
     btn.addEventListener('click', (e) => {
       const accId = e.target.dataset.reset;
@@ -508,101 +689,6 @@ function renderAccounts(app) {
     input.click();
   });
 }
-
-async function openImportModal(file) {
-  const modal = document.getElementById('importModal'), body = document.getElementById('modalBody'), title = document.getElementById('modalTitle'), btnConfirm = document.getElementById('modalConfirm'), btnCancel = document.getElementById('modalCancel');
-  title.textContent = `Analizando: ${file.name}`; body.innerHTML = '<div style="text-align:center;padding:30px">⏳ Procesando y auditando calidad...</div>'; modal.style.display = 'grid'; btnConfirm.disabled = true;
-  
-  try {
-    const wb = new ExcelJS.Workbook(); await wb.xlsx.load(await file.arrayBuffer());
-    const ws = wb.getWorksheet('Data a llenar') || wb.worksheets[2] || wb.worksheets[0];
-    
-    let maxCol = 0;
-    const headerRow = ws.getRow(1);
-    headerRow.eachCell((cell, colNumber) => { if (cell.value && String(cell.value).trim() !== '') maxCol = Math.max(maxCol, colNumber); });
-    if (maxCol < 32) maxCol = 45;
-
-    let totalEquipos = 0, filledBase = 0, filledAgas = 0;
-    let qaErrores = 0;
-    let qaDetalles = [];
-    const serialesUnicos = new Set();
-    const baseCols = 32;
-
-    for (let r = 2; r <= ws.rowCount; r++) {
-        const row = ws.getRow(r);
-        const serial = row.getCell(1).value;
-        
-        if (!serial || String(serial).trim() === '') continue; 
-        const serialStr = String(serial).trim();
-        totalEquipos++;
-        
-        // --- AUDITORÍA QA ---
-        if (serialesUnicos.has(serialStr)) { qaErrores++; if (qaDetalles.length < 3) qaDetalles.push(`Serial duplicado: ${serialStr}`); }
-        serialesUnicos.add(serialStr);
-
-        const email = row.getCell(16).value;
-        if (email && !String(email).includes('@') && String(email) !== 'No Aplica' && String(email) !== 'No aplica') { qaErrores++; if (qaDetalles.length < 3) qaDetalles.push(`Email inválido: ${serialStr}`); }
-        
-        const ip = row.getCell(8).value;
-        if (ip && !/^(\d{1,3}\.){3}\d{1,3}$/.test(String(ip)) && String(ip) !== '0.0.0.0' && String(ip) !== '1.1.1.1' && String(ip) !== 'No Aplica') { qaErrores++; if (qaDetalles.length < 3) qaDetalles.push(`IP inválida: ${serialStr}`); }
-
-        // --- MADUREZ ---
-        for (let c = 1; c <= baseCols; c++) { if (row.getCell(c).value != null && String(row.getCell(c).value).trim() !== '') filledBase++; }
-        for (let c = baseCols + 1; c <= maxCol; c++) { if (row.getCell(c).value != null && String(row.getCell(c).value).trim() !== '') filledAgas++; }
-    }
-
-    const pctBase = totalEquipos > 0 ? (filledBase / (totalEquipos * baseCols)) : 0;
-    const pctAgas = totalEquipos > 0 && maxCol > baseCols ? (filledAgas / (totalEquipos * (maxCol - baseCols))) : 0;
-    const reviewBase = Math.round(totalEquipos * pctBase);
-    const reviewAgas = Math.round(totalEquipos * pctAgas);
-    
-    // QA Final (si no hay equipos, es 0. Si hay, total menos errores)
-    const qaOk = Math.max(0, totalEquipos - qaErrores);
-
-    let matchedId = ''; const fname = file.name.toLowerCase();
-    for (const a of state.accounts) { if (fname.includes(a.name.toLowerCase().replace(/\s+/g, '_')) || fname.includes(a.id.toLowerCase())) { matchedId = a.id; break; } }
-
-    body.innerHTML = `
-      <div style="display:grid;grid-template-columns:1fr auto;gap:12px;margin-bottom:16px;font-size:14px">
-        <span>Total equipos válidos</span><strong>${totalEquipos}</strong>
-        <span>Madurez Col A-AF</span><strong>${(pctBase*100).toFixed(1)}% (${reviewBase} equipos eq.)</strong>
-        <span>Madurez Col AG-AS</span><strong>${(pctAgas*100).toFixed(1)}% (${reviewAgas} equipos eq.)</strong>
-        <span>QA Automático (Auditoría)</span><strong style="color:${qaErrores>0?'var(--danger)':'var(--success)'}">${qaOk} OK / ${qaErrores} errores</strong>
-      </div>
-      ${qaErrores > 0 ? `<div style="background:#fef2f2;color:#991b1b;padding:10px;border-radius:6px;font-size:12px;margin-bottom:16px"><strong>⚠ Errores detectados:</strong> ${qaDetalles.join(' | ')}...</div>` : ''}
-      <div style="background:#eff6ff;padding:12px;border-radius:8px;margin-bottom:16px">
-        <select id="importTargetAccount" style="width:100%;padding:10px;">
-          <option value="">-- Seleccionar Cuenta --</option>
-          ${state.accounts.map(a => `<option value="${a.id}" ${a.id === matchedId ? 'selected' : ''}>${a.name} (Avance actual: ${fmtPct(calcGlobal(a))})</option>`).join('')}
-        </select>
-      </div>`;
-      
-    btnConfirm.disabled = false;
-    btnConfirm.onclick = () => {
-      const accId = document.getElementById('importTargetAccount').value; 
-      if (!accId) { toast('Seleccioná cuenta'); return; }
-      const acc = state.accounts.find(a => a.id === accId);
-      
-      const isBetter = (totalEquipos > acc.total) || (reviewBase > acc.baseCount) || (reviewAgas > acc.agasCount) || (qaOk > acc.qaCount);
-
-      if (isBetter) {
-          acc.total = totalEquipos; 
-          acc.reviewed = totalEquipos;
-          acc.baseCount = reviewBase;
-          acc.agasCount = reviewAgas;
-          acc.qaCount = qaOk; // El QA se actualiza automáticamente
-          acc.updateDate = state.controlDate;
-          saveState(); modal.style.display = 'none'; render(); 
-          toast(`✓ ${acc.name} actualizada (QA: ${qaOk})`);
-      } else {
-          modal.style.display = 'none';
-          toast(`⚠ Archivo ignorado: El avance en el sistema es mayor o igual.`);
-      }
-    };
-  } catch (err) { body.innerHTML = `<div style="color:red;padding:20px">Error: ${err.message}</div>`; }
-  btnCancel.onclick = () => { modal.style.display = 'none'; };
-}
-
 
 function openReunionModal(accountId) {
   const acc = state.accounts.find(a=>a.id===accountId), st = calcStatus(acc), g = calcGlobal(acc), m = calcMeta(state.controlDate), gap = g - m;
