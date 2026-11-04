@@ -36,7 +36,7 @@ const SCHEDULE = [
 ];
 
 let state = null;
-let currentView = 'instructions';
+let currentView = 'dashboard'; // INICIA EN DASHBOARD POR DEFECTO
 let charts = {};
 
 /* ========== RESPALDO ========== */
@@ -239,7 +239,6 @@ function calcStatus(a) {
   const m = calcMeta(state.controlDate);
   if (p >= m) return 'AL DÍA';
   
-  // Encontrar la fecha de fin de la fase actual
   let currentPhaseEnd = '9999-12-31';
   for (let i = 0; i < META_THRESHOLDS.length; i++) {
      if (state.controlDate <= META_THRESHOLDS[i].max) {
@@ -249,15 +248,13 @@ function calcStatus(a) {
   }
   
   if (state.controlDate > currentPhaseEnd) {
-      // La fase ya terminó y no se cumplió la meta
       if (p >= m - 0.10) return 'ATRASO MENOR';
       return 'ATRASO CRÍTICO';
   } else {
-      // La fase está en curso. Evaluamos el ritmo de avance según la meta
       if (p >= m * 0.5) {
-          return 'EN PLAZO'; // Si va a más de la mitad de la meta, va bien
+          return 'EN PLAZO'; 
       } else {
-          return 'ATRASO MENOR'; // Si va bajo la mitad, necesita acelerar
+          return 'ATRASO MENOR'; 
       }
   }
 }
@@ -274,7 +271,6 @@ function statusClass(s) {
   };
   return map[s] || '';
 }
-
 
 function fmtPct(v) { if (v==null || isNaN(v)) return '—'; return (v*100).toFixed(1)+'%'; }
 function daysSinceDate(d) { if (!d) return null; return Math.floor((new Date(state.controlDate+'T00:00:00') - new Date(d+'T00:00:00'))/86400000); }
@@ -328,7 +324,6 @@ function render() {
   charts = {};
   updateBackupStatus();
   
-  // NUEVO: Sincronizar el calendario de la barra superior
   const cd = document.getElementById('controlDate');
   if (cd && state && cd.value !== state.controlDate) {
      cd.value = state.controlDate;
@@ -350,6 +345,36 @@ function render() {
 
 /* ========== VISTAS ========== */
 
+function openQAAlertsModal(accountName) {
+  const acc = state.accounts.find(a => a.name === accountName);
+  if (!acc || !acc.qaDetails || acc.qaDetails.length === 0) return;
+  
+  let modal = document.getElementById('qaAlertsModal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'qaAlertsModal';
+    modal.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);display:grid;place-items:center;z-index:9999;';
+    document.body.appendChild(modal);
+  }
+  
+  modal.innerHTML = `
+    <div style="background:white;border-radius:12px;width:90%;max-width:600px;max-height:80vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 10px 25px rgba(0,0,0,0.2);">
+      <div style="padding:16px;border-bottom:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center;background:#fef2f2;">
+        <h2 style="margin:0;font-size:16px;color:#991b1b;">Errores QA: ${acc.name}</h2>
+        <button onclick="document.getElementById('qaAlertsModal').style.display='none'" style="background:none;border:none;font-size:24px;cursor:pointer;color:#991b1b;line-height:1;">&times;</button>
+      </div>
+      <div style="padding:16px;overflow-y:auto;font-size:14px;color:#374151;">
+        <ul style="margin:0;padding-left:20px;">
+          ${acc.qaDetails.map(d => `<li style="margin-bottom:6px;">${d}</li>`).join('')}
+        </ul>
+      </div>
+      <div style="padding:16px;border-top:1px solid #e2e8f0;text-align:right;background:#f8fafc;">
+        <button class="btn btn-primary" onclick="document.getElementById('qaAlertsModal').style.display='none'">Cerrar</button>
+      </div>
+    </div>
+  `;
+  modal.style.display = 'grid';
+}
 
 function renderDashboard(app) {
   const accs = state.accounts;
@@ -363,7 +388,6 @@ function renderDashboard(app) {
 
   const warnings = validateAll();
   
-  // Filtramos las cuentas que tienen errores de QA para mostrarlas resumidas
   const accountsWithQA = accs.filter(a => a.qaDetails && a.qaDetails.length > 0);
 
   const week = getCurrentWeek(state.controlDate);
@@ -371,7 +395,6 @@ function renderDashboard(app) {
   const prepDone = accs.filter(a => a.responsible && a.total > 0).length;
   const bStatus = getBackupStatus();
 
-  // --- CÁLCULO DE HITOS ---
   const milestones = [
     {name:'Preparación', date:'2026-10-30', meta:0.10},
     {name:'Inventario base', date:'2026-11-06', meta:0.55},
@@ -428,9 +451,6 @@ function renderDashboard(app) {
       <p class="help" style="margin-top:8px;color:#991b1b">Haz clic en "Ver detalle" para auditar lo que debe corregir el OSA.</p>
     </div>` : ''}
 
-   // ... (líneas anteriores del código, alertas de QA, etc.)
-
-    <!-- NUEVA SECCIÓN: Fase Actual del Proyecto -->
     <div class="card" style="border-left: 4px solid var(--primary); background: linear-gradient(135deg, #f8fafc 0%, #eff6ff 100%); margin-bottom: 20px;">
       <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:15px;">
         <div>
@@ -580,7 +600,8 @@ async function openImportModal(file) {
         }
         serialesUnicos.add(serialStr);
 
-         const email = row.getCell(17).value;
+        // CORRECCIÓN: El correo está en la columna 17 (Q)
+        const email = row.getCell(17).value;
         if (email && !String(email).includes('@') && String(email) !== 'No Aplica' && String(email) !== 'No aplica') { 
             qaErrores++; 
             if(qaDetalles.length < 50) qaDetalles.push(`Email inválido en serial ${serialStr}: ${email}`); 
@@ -637,7 +658,7 @@ async function openImportModal(file) {
           acc.agasCount = reviewAgas;
           acc.qaCount = qaOk;
           acc.updateDate = state.controlDate;
-          acc.qaDetails = qaDetalles; // <-- NUEVO: Guardamos los detalles
+          acc.qaDetails = qaDetalles;
           saveState(); modal.style.display = 'none'; render(); 
           toast(`✓ ${acc.name} actualizada (QA: ${qaOk})`);
       } else {
@@ -655,7 +676,7 @@ function renderPlan(app) {
   const prepDone = state.accounts.filter(a => a.responsible && a.total > 0).length;
   const avg = state.accounts.reduce((s,a)=>s+calcGlobal(a),0)/state.accounts.length;
 
-const sorted = [...state.accounts].sort((a,b)=>{const p={'ATRASO CRÍTICO':0,'CRÍTICO':0,'ATRASO MENOR':1,'EN PLAZO':2,'AL DÍA':3,'FINALIZADO':4,'SIN DATOS':5}; return (p[calcStatus(a)]??6)-(p[calcStatus(b)]??6);});
+  const sorted = [...state.accounts].sort((a,b)=>{const p={'ATRASO CRÍTICO':0,'CRÍTICO':0,'ATRASO MENOR':1,'EN PLAZO':2,'AL DÍA':3,'FINALIZADO':4,'SIN DATOS':5}; return (p[calcStatus(a)]??6)-(p[calcStatus(b)]??6);});
    
   app.innerHTML = `
     <div class="card plan-header"><div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:20px;"><div><div class="week-badge">${week.name} · ${week.period}</div><h2 style="font-size:22px;margin-top:10px;">Foco: ${week.focus}</h2><p class="help">${isPrep ? `Prep: ${prepDone}/12 cuentas` : `Meta: ${fmtPct(week.meta)}`}</p></div><div style="text-align:right"><div style="font-size:32px;font-weight:700;color:var(--primary);">${fmtPct(avg)}</div><div class="help">Avance prom.</div></div></div></div>
@@ -797,7 +818,6 @@ async function renderBackups(app) {
   document.getElementById('btnExportNow')?.addEventListener('click', () => { const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' }); download(blob, `mps_backup.json`); });
   document.getElementById('btnImportRestore')?.addEventListener('click', () => { const input = document.createElement('input'); input.type='file'; input.accept='.json'; input.onchange=async e=>{ const f=e.target.files[0]; if(!f)return; const txt=await f.text(); try{ const data=JSON.parse(txt); if(!data.accounts)throw new Error('Inválido'); if(!confirm('¿Reemplazar datos?'))return; await addSnapshot(state); state=data; await dbPut(STORE_CURRENT,'current',state); saveState(); render(); }catch(err){toast('Error');} }; input.click(); });
   
-  // NUEVO: Botón para borrar todos los respaldos
   document.getElementById('btnDeleteAllSnapshots')?.addEventListener('click', async () => {
     if (!confirm('¿Estás seguro de eliminar TODOS los respaldos de la máquina del tiempo? Esta acción no se puede deshacer.')) return;
     try {
@@ -884,6 +904,7 @@ function renderInstructions(app) {
     </div>
   `;
 }
+
 function renderSettings(app) {
   app.innerHTML = `<div class="card"><h2>Configuración</h2><div class="form-grid" style="margin-bottom:20px"><div><label>Fecha de control</label><input type="date" id="setControlDate" value="${state.controlDate}"></div></div><div style="display:flex;gap:10px;flex-wrap:wrap"><button class="btn btn-primary" id="btnExportJSON">⬇ JSON</button><button class="btn" id="btnImportJSON">⬆ Importar JSON</button><button class="btn" id="btnExportCSV">⬇ CSV</button><button class="btn btn-danger" id="btnReset">🔄 Reiniciar</button></div><input type="file" id="fileImport" accept="application/json" hidden></div>`;
   document.getElementById('setControlDate').addEventListener('change',e=>{ state.controlDate=e.target.value; saveState(); render(); });
@@ -914,7 +935,7 @@ async function exportToExcel() {
   const avgProgress = accs.reduce((s,a)=>s+calcGlobal(a),0)/accs.length;
   const totalReviewed = accs.reduce((s,a)=>s+(+a.reviewed||0),0);
 
-  const counts = { FINALIZADO:0, 'AL DÍA':0, 'ATRASO MENOR':0, 'ATRASO CRÍTICO':0, 'CRÍTICO':0, 'SIN DATOS':0 };
+  const counts = { FINALIZADO:0, 'AL DÍA':0, 'EN PLAZO':0, 'ATRASO MENOR':0, 'ATRASO CRÍTICO':0, 'CRÍTICO':0, 'SIN DATOS':0 };
   accs.forEach(a=>counts[calcStatus(a)]++);
   const enRojo = counts['ATRASO CRÍTICO'] + counts['CRÍTICO'];
 
@@ -1000,7 +1021,7 @@ async function exportToExcel() {
     c.value = h; c.font = { bold: true, size: 10, color: { argb: 'FFFFFFFF' } }; c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: colors.darkBlue } }; c.alignment = { horizontal: 'center', vertical: 'middle' }; c.border = borderStyle;
   });
 
-    accs.forEach((a, i) => {
+  accs.forEach((a, i) => {
     const r = 11 + i; const g = calcGlobal(a), st = calcStatus(a); const row = ws.getRow(r);
     row.getCell(1).value = a.name; row.getCell(2).value = a.osas; row.getCell(3).value = a.reviewed; row.getCell(4).value = fmtPct(g); row.getCell(5).value = st;
     for (let c = 1; c <= 5; c++) { row.getCell(c).border = borderStyle; row.getCell(c).alignment = { horizontal: 'center', vertical: 'middle' }; }
@@ -1038,7 +1059,7 @@ async function exportToExcel() {
 
   // 5. Gráficos
   // Gráfico de Barras (Arriba a la derecha)
-    const barImg = generateChartImage({
+  const barImg = generateChartImage({
     type:'bar',
     data:{ labels:accs.map(a=>a.name), datasets:[{ label:'Avance', data:accs.map(a=>+(calcGlobal(a)*100).toFixed(1)), backgroundColor:'#2563eb' }]},
     options:{ responsive:false, animation:false, 
@@ -1053,24 +1074,23 @@ async function exportToExcel() {
   if (barImg) ws.addImage(wb.addImage({base64:barImg,extension:'png'}), { tl:{col:6, row:9}, ext:{width:500,height:250} });
 
   // Gráfico Dona Hitos (Abajo a la derecha)
-      const donaHitosImg = generateChartImage({
+  const donaHitosImg = generateChartImage({
     type:'doughnut',
     data:{ labels:['Cumplidos','Próximos','Pendientes'], datasets:[{ data:[hitosCumplidos, hitosProximos, hitosPendientes], backgroundColor:['#16a34a', '#f59e0b', '#dc2626'] }]},
     options:{ responsive:false, animation:false, 
-      layout: { padding: 20 }, // Damos un poco de margen para que las etiquetas no se corten
+      layout: { padding: 20 },
       plugins:{ 
         title:{display:true,text:'Estado de Hitos',font:{size:14,weight:'bold'}}, 
         legend:{position:'right'},
         datalabels: { 
           color: '#fff', 
           font: { size: 16, weight: 'bold' },
-          display: (context) => context.dataset.data[context.dataIndex] > 0, // Solo muestra si es mayor a 0
+          display: (context) => context.dataset.data[context.dataIndex] > 0,
           formatter: (val) => val 
         }
       } 
     },
   });
-   
    
   if (donaHitosImg) ws.addImage(wb.addImage({base64:donaHitosImg,extension:'png'}), { tl:{col:6, row:startRowHitos}, ext:{width:450,height:250} });
 
@@ -1105,12 +1125,45 @@ function toast(msg) { const t = document.getElementById('toast'); if (!t) return
 function takeSnapshot() { const date = state.controlDate; state.accounts.forEach(a => { state.history.push({ date, account: a.name, osas: a.osas, total: a.total, reviewed: a.reviewed, baseCount: a.baseCount, agasCount: a.agasCount, qaCount: a.qaCount, pctBase: pctBase(a), pctAGAS: pctAGAS(a), pctQA: pctQA(a), global: calcGlobal(a), status: calcStatus(a), comment: a.observations||'' }); }); saveState(); toast(`Corte ${date} guardado`); if (currentView === 'history') render(); }
 
 async function init() {
-  state = await loadState(); if (!state.controlDate) state.controlDate = new Date().toISOString().slice(0,10);
-  const cd = document.getElementById('controlDate'); if (cd) { cd.value = state.controlDate; cd.addEventListener('change', e => { state.controlDate = e.target.value; saveState(); render(); }); }
+  state = await loadState(); 
+  if (!state.controlDate) state.controlDate = new Date().toISOString().slice(0,10);
+  
+  const cd = document.getElementById('controlDate'); 
+  if (cd) { 
+    cd.value = state.controlDate; 
+    cd.addEventListener('change', e => { state.controlDate = e.target.value; saveState(); render(); }); 
+  }
+  
+  // NUEVO: Mover el botón de "Instrucciones" al final del menú de navegación
+  const nav = document.querySelector('.app-nav');
+  const instrBtn = document.querySelector('.app-nav [data-view="instructions"]');
+  if (nav && instrBtn) {
+     nav.appendChild(instrBtn);
+  }
+
   document.getElementById('btnSnapshot')?.addEventListener('click', takeSnapshot);
   document.getElementById('btnExportExcel')?.addEventListener('click', () => { exportToExcel().catch(err => toast('Error')); });
-  document.querySelectorAll('.app-nav button').forEach(b => { b.addEventListener('click', () => { document.querySelectorAll('.app-nav button').forEach(x=>x.classList.remove('active')); b.classList.add('active'); currentView = b.dataset.view; render(); window.scrollTo({top:0,behavior:'smooth'}); }); });
-  await restoreFileHandle(); startAutoSave(); setupUnloadWarning(); updateBackupStatus(); render();
+  
+  document.querySelectorAll('.app-nav button').forEach(b => { 
+    b.addEventListener('click', () => { 
+      document.querySelectorAll('.app-nav button').forEach(x=>x.classList.remove('active')); 
+      b.classList.add('active'); 
+      currentView = b.dataset.view; 
+      render(); 
+      window.scrollTo({top:0,behavior:'smooth'}); 
+    }); 
+  });
+
+  await restoreFileHandle(); 
+  startAutoSave(); 
+  setupUnloadWarning(); 
+  updateBackupStatus(); 
+  
+  // Asegurar que el Dashboard quede seleccionado visualmente al cargar
+  document.querySelectorAll('.app-nav button').forEach(x=>x.classList.remove('active'));
+  document.querySelector('.app-nav button[data-view="dashboard"]')?.classList.add('active');
+  
+  render();
 }
 init();
 // ========== FIN DEL ARCHIVO app.js ==========
