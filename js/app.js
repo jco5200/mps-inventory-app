@@ -1015,10 +1015,17 @@ async function exportToExcel() {
 
   // 5. Gráficos
   // Gráfico de Barras (Arriba a la derecha)
-  const barImg = generateChartImage({
+    const barImg = generateChartImage({
     type:'bar',
     data:{ labels:accs.map(a=>a.name), datasets:[{ label:'Avance', data:accs.map(a=>+(calcGlobal(a)*100).toFixed(1)), backgroundColor:'#2563eb' }]},
-    options:{ responsive:false, animation:false, plugins:{ title:{display:true,text:'Avance global por cuenta',font:{size:14,weight:'bold'}}, legend:{display:false} }, scales:{ y:{ beginAtZero:true, max:100 } } },
+    options:{ responsive:false, animation:false, 
+      plugins:{ 
+        title:{display:true,text:'Avance global por cuenta',font:{size:14,weight:'bold'}}, 
+        legend:{display:false},
+        datalabels: { anchor: 'end', align: 'top', formatter: (val) => val > 0 ? val + '%' : '', font: { size: 10, weight: 'bold' }, color: '#1e293b' }
+      }, 
+      scales:{ y:{ beginAtZero:true, max:100 } } 
+    },
   });
   if (barImg) ws.addImage(wb.addImage({base64:barImg,extension:'png'}), { tl:{col:6, row:9}, ext:{width:500,height:250} });
 
