@@ -1030,11 +1030,18 @@ async function exportToExcel() {
   if (barImg) ws.addImage(wb.addImage({base64:barImg,extension:'png'}), { tl:{col:6, row:9}, ext:{width:500,height:250} });
 
   // Gráfico Dona Hitos (Abajo a la derecha)
-  const donaHitosImg = generateChartImage({
+    const donaHitosImg = generateChartImage({
     type:'doughnut',
     data:{ labels:['Cumplidos','Próximos','Pendientes'], datasets:[{ data:[hitosCumplidos, hitosProximos, hitosPendientes], backgroundColor:['#16a34a', '#f59e0b', '#dc2626'] }]},
-    options:{ responsive:false, animation:false, plugins:{ title:{display:true,text:'Estado de Hitos',font:{size:14,weight:'bold'}}, legend:{position:'right'} } },
+    options:{ responsive:false, animation:false, 
+      plugins:{ 
+        title:{display:true,text:'Estado de Hitos',font:{size:14,weight:'bold'}}, 
+        legend:{position:'right'},
+        datalabels: { color: '#fff', font: { size: 14, weight: 'bold' }, formatter: (val) => val > 0 ? val : '' }
+      } 
+    },
   });
+   
   if (donaHitosImg) ws.addImage(wb.addImage({base64:donaHitosImg,extension:'png'}), { tl:{col:6, row:startRowHitos}, ext:{width:450,height:250} });
 
 
