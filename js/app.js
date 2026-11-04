@@ -544,7 +544,7 @@ async function openImportModal(file) {
         }
         serialesUnicos.add(serialStr);
 
-        const email = row.getCell(16).value;
+         const email = row.getCell(17).value;
         if (email && !String(email).includes('@') && String(email) !== 'No Aplica' && String(email) !== 'No aplica') { 
             qaErrores++; 
             if(qaDetalles.length < 50) qaDetalles.push(`Email inválido en serial ${serialStr}: ${email}`); 
