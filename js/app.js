@@ -428,6 +428,22 @@ function renderDashboard(app) {
       <p class="help" style="margin-top:8px;color:#991b1b">Haz clic en "Ver detalle" para auditar lo que debe corregir el OSA.</p>
     </div>` : ''}
 
+   // ... (líneas anteriores del código, alertas de QA, etc.)
+
+    <!-- NUEVA SECCIÓN: Fase Actual del Proyecto -->
+    <div class="card" style="border-left: 4px solid var(--primary); background: linear-gradient(135deg, #f8fafc 0%, #eff6ff 100%); margin-bottom: 20px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:15px;">
+        <div>
+          <h2 style="margin:0; font-size:18px; color:#1e3a8a;">📍 Fase Actual: ${week.name} (${week.period})</h2>
+          <p class="help" style="margin:4px 0 0 0; font-size:14px; color:#3b82f6;">Foco: <strong>${week.focus}</strong></p>
+        </div>
+        <div style="text-align:right; background:white; padding:10px 20px; border-radius:8px; border:1px solid #e2e8f0; box-shadow:0 1px 2px rgba(0,0,0,0.05);">
+          <div style="font-size:11px; color:var(--gray-500); font-weight:bold; text-transform:uppercase; letter-spacing:0.5px;">Meta del Hito</div>
+          <div style="font-size:22px; font-weight:700; color:var(--primary);">${fmtPct(week.meta)}</div>
+        </div>
+      </div>
+    </div>
+     
     <div class="kpi-grid">
       <div class="kpi"><div class="kpi-label">Cuentas</div><div class="kpi-value">12</div><div class="kpi-sub">${totalOSAs} OSAs asignados</div></div>
       <div class="kpi success"><div class="kpi-label">Avance promedio</div><div class="kpi-value">${fmtPct(avgProgress)}</div><div class="kpi-sub">Meta ${prep?'—':fmtPct(week.meta)}</div></div>
