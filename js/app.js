@@ -235,16 +235,31 @@ function calcStatus(a) {
   if (p >= 1) return 'FINALIZADO';
   if (!a.total || !a.updateDate) return 'SIN DATOS';
   if (a.criticalBlock) return 'CRÍTICO';
+  
   const m = calcMeta(state.controlDate);
   if (p >= m) return 'AL DÍA';
   
-  // NUEVA REGLA: Si el hito vence HOY y no se ha cumplido -> EN PLAZO
-  const isDueToday = META_THRESHOLDS.some(t => t.max === state.controlDate && t.max !== '9999-12-31');
-  if (isDueToday) return 'EN PLAZO';
+  // Encontrar la fecha de fin de la fase actual
+  let currentPhaseEnd = '9999-12-31';
+  for (let i = 0; i < META_THRESHOLDS.length; i++) {
+     if (state.controlDate <= META_THRESHOLDS[i].max) {
+         currentPhaseEnd = META_THRESHOLDS[i].max;
+         break;
+     }
+  }
   
-  // Si venció ayer o antes, cae en atraso
-  if (p >= m - 0.10) return 'ATRASO MENOR';
-  return 'ATRASO CRÍTICO';
+  if (state.controlDate > currentPhaseEnd) {
+      // La fase ya terminó y no se cumplió la meta
+      if (p >= m - 0.10) return 'ATRASO MENOR';
+      return 'ATRASO CRÍTICO';
+  } else {
+      // La fase está en curso. Evaluamos el ritmo de avance según la meta
+      if (p >= m * 0.5) {
+          return 'EN PLAZO'; // Si va a más de la mitad de la meta, va bien
+      } else {
+          return 'ATRASO MENOR'; // Si va bajo la mitad, necesita acelerar
+      }
+  }
 }
 
 function statusClass(s) {
@@ -312,6 +327,13 @@ function render() {
   Object.values(charts).forEach(c => c && c.destroy && c.destroy());
   charts = {};
   updateBackupStatus();
+  
+  // NUEVO: Sincronizar el calendario de la barra superior
+  const cd = document.getElementById('controlDate');
+  if (cd && state && cd.value !== state.controlDate) {
+     cd.value = state.controlDate;
+  }
+  
   const app = document.getElementById('app');
   if (!app) return;
   if (currentView === 'dashboard') renderDashboard(app);
@@ -328,6 +350,7 @@ function render() {
 
 /* ========== VISTAS ========== */
 
+
 function renderDashboard(app) {
   const accs = state.accounts;
   const totalOSAs = accs.reduce((s,a)=>s+(+a.osas||0),0);
@@ -340,13 +363,8 @@ function renderDashboard(app) {
 
   const warnings = validateAll();
   
-  // Recopilar alertas de QA de los Excels
-  const qaAlerts = [];
-  accs.forEach(a => {
-    if (a.qaDetails && a.qaDetails.length > 0) {
-      a.qaDetails.forEach(det => qaAlerts.push({ account: a.name, msg: det }));
-    }
-  });
+  // Filtramos las cuentas que tienen errores de QA para mostrarlas resumidas
+  const accountsWithQA = accs.filter(a => a.qaDetails && a.qaDetails.length > 0);
 
   const week = getCurrentWeek(state.controlDate);
   const prep = isPreparationPhase(state.controlDate);
@@ -399,13 +417,15 @@ function renderDashboard(app) {
         ${warnings.length>5?`<li>… y ${warnings.length-5} más</li>`:''}
       </ul></div>` : ''}
 
-    ${qaAlerts.length ? `<div class="card" style="border-left:4px solid var(--danger);background:#fef2f2">
-      <h2 style="color:#991b1b;font-size:14px">🚨 ${qaAlerts.length} error(es) de Calidad (QA) detectados en archivos Excel</h2>
-      <ul style="margin:8px 0 0 20px;font-size:13px;color:#7f1d1d;max-height:150px;overflow-y:auto">
-        ${qaAlerts.slice(0,15).map(w=>`<li><strong>${w.account}</strong>: ${w.msg}</li>`).join('')}
-        ${qaAlerts.length>15?`<li>… y ${qaAlerts.length-15} más</li>`:''}
+    ${accountsWithQA.length > 0 ? `<div class="card" style="border-left:4px solid var(--danger);background:#fef2f2">
+      <h2 style="color:#991b1b;font-size:14px">🚨 Alertas de Calidad (QA) en archivos Excel</h2>
+      <ul style="margin:8px 0 0 20px;font-size:13px;color:#7f1d1d;">
+        ${accountsWithQA.map(a => `
+          <li style="margin-bottom:6px;"><strong>${a.name}</strong>: ${a.qaDetails.length} error(es). 
+          <a href="#" onclick="openQAAlertsModal('${a.name}'); return false;" style="color:#991b1b;text-decoration:underline;font-weight:bold;margin-left:6px;">Ver detalle</a></li>
+        `).join('')}
       </ul>
-      <p class="help" style="margin-top:8px;color:#991b1b">Por favor, solicita a los OSAs corregir estos puntos en sus archivos.</p>
+      <p class="help" style="margin-top:8px;color:#991b1b">Haz clic en "Ver detalle" para auditar lo que debe corregir el OSA.</p>
     </div>` : ''}
 
     <div class="kpi-grid">
