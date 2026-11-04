@@ -878,9 +878,16 @@ function renderSettings(app) {
   document.getElementById('btnReset').addEventListener('click',()=>{ if(!confirm('¿Borrar todo?'))return; state=getInitialState(); saveState(); render(); });
 }
 
-
-function generateChartImage(config) { if (typeof Chart === 'undefined') return null; const c = document.createElement('canvas'); c.width = 900; c.height = 450; const chart = new Chart(c, config); const url = c.toDataURL('image/png', 1.0); chart.destroy(); return url.split(',')[1]; }
-
+function generateChartImage(config) { 
+  if (typeof Chart === 'undefined') return null; 
+  const c = document.createElement('canvas'); 
+  c.width = 900; c.height = 450; 
+  // Forzamos que el gráfico temporal use el plugin de etiquetas y usamos su método oficial de exportación
+  const chart = new Chart(c, { ...config, plugins: [ChartDataLabels] }); 
+  const url = chart.toBase64Image(); 
+  chart.destroy(); 
+  return url.split(',')[1]; 
+}
 
 async function exportToExcel() {
   if (typeof ExcelJS === 'undefined') { toast('ExcelJS no cargado. Revisá tu conexión.'); return; }
