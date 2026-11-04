@@ -229,6 +229,7 @@ function calcPhase(a) {
   if (p > 0) return 'Inventario base A-AF';
   return 'Preparación';
 }
+
 function calcStatus(a) {
   const p = calcGlobal(a);
   if (p >= 1) return 'FINALIZADO';
@@ -236,13 +237,30 @@ function calcStatus(a) {
   if (a.criticalBlock) return 'CRÍTICO';
   const m = calcMeta(state.controlDate);
   if (p >= m) return 'AL DÍA';
+  
+  // NUEVA REGLA: Si el hito vence HOY y no se ha cumplido -> EN PLAZO
+  const isDueToday = META_THRESHOLDS.some(t => t.max === state.controlDate && t.max !== '9999-12-31');
+  if (isDueToday) return 'EN PLAZO';
+  
+  // Si venció ayer o antes, cae en atraso
   if (p >= m - 0.10) return 'ATRASO MENOR';
   return 'ATRASO CRÍTICO';
 }
+
 function statusClass(s) {
-  const map = { 'FINALIZADO': 'badge-finalizado', 'AL DÍA': 'badge-verde', 'ATRASO MENOR': 'badge-ambar', 'ATRASO CRÍTICO': 'badge-rojo', 'CRÍTICO': 'badge-rojo', 'SIN DATOS': 'badge-sin-fecha' };
+  const map = { 
+    'FINALIZADO': 'badge-finalizado', 
+    'AL DÍA': 'badge-verde', 
+    'EN PLAZO': 'badge-verde', 
+    'ATRASO MENOR': 'badge-ambar', 
+    'ATRASO CRÍTICO': 'badge-rojo', 
+    'CRÍTICO': 'badge-rojo', 
+    'SIN DATOS': 'badge-sin-fecha' 
+  };
   return map[s] || '';
 }
+
+
 function fmtPct(v) { if (v==null || isNaN(v)) return '—'; return (v*100).toFixed(1)+'%'; }
 function daysSinceDate(d) { if (!d) return null; return Math.floor((new Date(state.controlDate+'T00:00:00') - new Date(d+'T00:00:00'))/86400000); }
 function calcRiskSemaphore(r) {
@@ -309,180 +327,118 @@ function render() {
 }
 
 /* ========== VISTAS ========== */
-function renderDashboard(app) {
-  const accs = state.accounts;
-  const totalOSAs = accs.reduce((s,a)=>s+(+a.osas||0),0);
-  const avgProgress = accs.reduce((s,a)=>s+calcGlobal(a),0)/accs.length;
-  const totalReviewed = accs.reduce((s,a)=>s+(+a.reviewed||0),0);
-  const totalEquip = accs.reduce((s,a)=>s+(+a.total||0),0);
 
-  const counts = { FINALIZADO:0, 'AL DÍA':0, 'ATRASO MENOR':0, 'ATRASO CRÍTICO':0, 'CRÍTICO':0, 'SIN DATOS':0 };
-  accs.forEach(a => counts[calcStatus(a)]++);
-
-  const warnings = validateAll();
-  const week = getCurrentWeek(state.controlDate);
-  const prep = isPreparationPhase(state.controlDate);
-  const prepDone = accs.filter(a => a.responsible && a.total > 0).length;
-  const bStatus = getBackupStatus();
-
-  // --- CÁLCULO DE HITOS ---
-  const milestones = [
-    {name:'Preparación', date:'2026-10-30', meta:0.10},
-    {name:'Inventario base', date:'2026-11-06', meta:0.55},
-    {name:'Corte AG-AS', date:'2026-11-13', meta:0.75},
-    {name:'Cierre AG-AS', date:'2026-11-20', meta:0.90},
-    {name:'QA', date:'2026-11-27', meta:0.98},
-    {name:'Cierre', date:'2026-11-30', meta:1.00},
-  ];
-  let hitosCumplidos = 0, hitosProximos = 0, hitosPendientes = 0;
-
-  const milestoneData = milestones.map(h => {
-    let sit, comment = '';
-    if (state.controlDate < h.date) {
-      sit = 'PRÓXIMO'; comment = 'Aún no es la fecha de evaluación.'; hitosProximos++;
-   
-       } else if (h.name === 'Preparación') {
-      const pending = accs.filter(a => !(a.responsible && a.total > 0));
-      if (pending.length === 0) { 
-          sit = 'CUMPLIDO · 100%'; comment = 'Todas las cuentas listas.'; hitosCumplidos++; 
-      } else if (pending.length === 1 && (pending[0].id === 'provida' || pending[0].id === 'uai')) { 
-          sit = 'CUMPLIDO · EXCEPCIÓN'; comment = `${pending[0].name} excluida (Justificada).`; hitosCumplidos++; 
-      } else { 
-          sit = 'PENDIENTE'; comment = `Falta completar: ${pending.map(p=>p.name).join(', ')}`; hitosPendientes++; 
-      }
-       
-    } else {
-      if (avgProgress >= h.meta) { sit = 'CUMPLIDO · '+fmtPct(avgProgress); comment = 'Meta alcanzada.'; hitosCumplidos++; }
-      else { sit = 'PENDIENTE'; comment = `Brecha global de ${(h.meta*100 - avgProgress*100).toFixed(1)} pts.`; hitosPendientes++; }
-    }
-    return { ...h, sit, comment };
-  });
-
-  app.innerHTML = `
-    ${bStatus.level !== 'ok' ? `<div class="card" style="border-left:4px solid var(--${bStatus.level === 'danger' ? 'danger' : 'warning'});background:${bStatus.level === 'danger' ? '#fef2f2' : '#fffbeb'}">
-      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
-        <div><strong style="color:${bStatus.level === 'danger' ? '#991b1b' : '#92400e'}">${bStatus.msg}</strong><div class="help">${bStatus.long}</div></div>
-        <button class="btn btn-primary" onclick="document.querySelector('[data-view=backups]').click()">Ir a Respaldos →</button>
-      </div>
-    </div>` : ''}
-    ${warnings.length ? `<div class="card" style="border-left:4px solid var(--warning);background:#fffbeb">
-      <h2 style="color:#92400e;font-size:14px">⚠ ${warnings.length} alerta(s)</h2>
-      <ul style="margin:8px 0 0 20px;font-size:13px;color:#78350f">
-        ${warnings.slice(0,5).map(w=>`<li><strong>${w.account}</strong>: ${w.msg}</li>`).join('')}
-        ${warnings.length>5?`<li>… y ${warnings.length-5} más</li>`:''}
-      </ul></div>` : ''}
-
-    <div class="kpi-grid">
-      <div class="kpi"><div class="kpi-label">Cuentas</div><div class="kpi-value">12</div><div class="kpi-sub">${totalOSAs} OSAs asignados</div></div>
-      <div class="kpi success"><div class="kpi-label">Avance promedio</div><div class="kpi-value">${fmtPct(avgProgress)}</div><div class="kpi-sub">Meta ${prep?'—':fmtPct(week.meta)}</div></div>
-      <div class="kpi success"><div class="kpi-label">Al día</div><div class="kpi-value">${counts['AL DÍA']+counts.FINALIZADO}</div><div class="kpi-sub">${counts['ATRASO MENOR']} en atraso menor</div></div>
-      <div class="kpi danger"><div class="kpi-label">Atraso crítico</div><div class="kpi-value">${counts['ATRASO CRÍTICO']+counts['CRÍTICO']}</div><div class="kpi-sub">${counts['SIN DATOS']} sin datos</div></div>
-      <div class="kpi"><div class="kpi-label">Equipos revisados</div><div class="kpi-value">${totalReviewed}</div><div class="kpi-sub">de ${totalEquip} totales</div></div>
-    </div>
-
-    ${prep ? `<div class="card"><h2>Hito de Preparación · ${prepDone}/12 cuentas listas</h2><p class="help">Cada cuenta debe tener responsable y total definidos. Se cumple antes del 30-10-2026.</p></div>` : ''}
-
-    <div class="charts-row">
-      <div class="card"><h2>Avance vs Meta por cuenta</h2><div class="chart-container"><canvas id="chartProgress"></canvas></div></div>
-      <div class="card"><h2>Distribución de estados</h2><div class="chart-container"><canvas id="chartStatus"></canvas></div></div>
-    </div>
-
-    <div class="card">
-      <h2>Resumen por cuenta</h2>
-               <div class="table-wrap"><table>
-            <thead><tr><th>Cuenta</th><th>OSAs</th><th>Total</th><th>Revisados</th><th>% Col A-AF</th><th>Col AG-AS</th><th>QA</th><th>Global</th><th>Meta</th><th>Brecha</th><th>Fase</th><th>Estado</th></tr></thead>
-            <tbody>${accs.map(a=>{
-              const g=calcGlobal(a), m=calcMeta(state.controlDate), gap=g-m, st=calcStatus(a);
-              return `<tr><td><strong>${a.name}</strong></td><td>${a.osas}</td><td>${a.total}</td><td>${a.reviewed}</td>
-                <td>${fmtPct(pctBase(a))}</td><td>${fmtPct(pctAGAS(a))}</td><td>${fmtPct(pctQA(a))}</td>
-                <td><strong>${fmtPct(g)}</strong></td><td>${fmtPct(m)}</td>
-                <td style="color:${gap<0?'var(--danger)':'var(--success)'}">${(gap*100).toFixed(1)} pts</td>
-                <td>${calcPhase(a)}</td><td><span class="badge ${statusClass(st)}">${st}</span></td></tr>`;}).join('')}
-            </tbody>
-          </table></div>
-    </div>
-
-    <!-- NUEVA SECCIÓN: HITOS Y GRÁFICO -->
-    <div class="charts-row">
-      <div class="card">
-        <h2>Hitos del proyecto</h2>
-        <div class="table-wrap"><table>
-          <thead><tr><th>Hito</th><th>Fecha</th><th>Meta</th><th>Resultado</th><th>Situación</th><th>Comentarios / Justificación</th></tr></thead>
-          <tbody>${milestoneData.map(h=>{
-            const cls = h.sit.startsWith('CUMPLIDO')?'badge-verde':h.sit==='PENDIENTE'?'badge-rojo':'badge-sin-fecha';
-            return `<tr><td>${h.name}</td><td>${h.date}</td><td>${fmtPct(h.meta)}</td><td>${fmtPct(avgProgress)}</td>
-              <td><span class="badge ${cls}">${h.sit}</span></td>
-              <td style="font-size:12px;color:var(--gray-600)">${h.comment}</td></tr>`;
-          }).join('')}
-          </tbody>
-        </table></div>
-      </div>
-      <div class="card">
-        <h2>Estado de Hitos</h2>
-        <div class="chart-container"><canvas id="chartMilestones"></canvas></div>
-      </div>
-    </div>
-  `;
-
-  if (typeof Chart === 'undefined') {
-    console.warn('Chart.js no disponible; los gráficos no se muestran.');
-    return;
-  }
-
+async function openImportModal(file) {
+  const modal = document.getElementById('importModal'), body = document.getElementById('modalBody'), title = document.getElementById('modalTitle'), btnConfirm = document.getElementById('modalConfirm'), btnCancel = document.getElementById('modalCancel');
+  title.textContent = `Analizando: ${file.name}`; body.innerHTML = '<div style="text-align:center;padding:30px">⏳ Procesando y auditando calidad...</div>'; modal.style.display = 'grid'; btnConfirm.disabled = true;
+  
   try {
-    charts.progress = new Chart(document.getElementById('chartProgress'), {
-      type:'bar',
-      data:{ labels:accs.map(a=>a.name), datasets:[
-        { label:'Avance', data:accs.map(a=>+(calcGlobal(a)*100).toFixed(1)), backgroundColor:'#2563eb', borderRadius:6 },
-        { label:'Meta', data:accs.map(()=>+(calcMeta(state.controlDate)*100).toFixed(1)), backgroundColor:'#94a3b8', borderRadius:6 },
-      ]},
-      options:{ responsive:true, maintainAspectRatio:false,
-        scales:{ y:{ beginAtZero:true, max:100, ticks:{ callback:v=>v+'%' } } },
-        plugins:{
-          legend:{ position:'bottom' },
-          datalabels: { anchor: 'end', align: 'top', formatter: (val) => val > 0 ? val + '%' : '', font: { size: 10, weight: 'bold' }, color: '#374151' }
-        }
-      }
-    });
+    const wb = new ExcelJS.Workbook(); await wb.xlsx.load(await file.arrayBuffer());
+    const ws = wb.getWorksheet('Data a llenar') || wb.worksheets[2] || wb.worksheets[0];
+    
+    let maxCol = 0;
+    const headerRow = ws.getRow(1);
+    headerRow.eachCell((cell, colNumber) => { if (cell.value && String(cell.value).trim() !== '') maxCol = Math.max(maxCol, colNumber); });
+    if (maxCol < 32) maxCol = 45;
 
-    charts.status = new Chart(document.getElementById('chartStatus'), {
-      type:'doughnut',
-      data:{ labels:['Al día','Atraso menor','Atraso crítico','Finalizado','Sin datos'], datasets:[{
-        data:[counts['AL DÍA'],counts['ATRASO MENOR'],counts['ATRASO CRÍTICO']+counts['CRÍTICO'],counts.FINALIZADO,counts['SIN DATOS']],
-        backgroundColor:['#16a34a','#f59e0b','#dc2626','#0d9488','#9ca3af'], borderWidth:0,
-      }]},
-      options:{ responsive:true, maintainAspectRatio:false,
-        plugins:{
-          legend:{ position:'bottom' },
-          datalabels: { color: '#fff', font: { size: 12, weight: 'bold' }, formatter: (val) => val > 0 ? val : '' }
-        }
-      }
-    });
+    let totalEquipos = 0, filledBase = 0, filledAgas = 0;
+    let qaErrores = 0;
+    let qaDetalles = [];
+    const serialesUnicos = new Set();
+    const baseCols = 32;
 
-    // NUEVO GRÁFICO DE HITOS
-    charts.milestones = new Chart(document.getElementById('chartMilestones'), {
-      type:'doughnut',
-      data:{ labels:['Cumplidos','Próximos','Pendientes'], datasets:[{
-        data:[hitosCumplidos, hitosProximos, hitosPendientes],
-        backgroundColor:['#16a34a', '#f59e0b', '#dc2626'], borderWidth:0,
-      }]},
-      options:{ responsive:true, maintainAspectRatio:false,
-        plugins:{
-          legend:{ position:'bottom' },
-          datalabels: { color: '#fff', font: { size: 14, weight: 'bold' }, formatter: (val) => val > 0 ? val : '' }
+    for (let r = 2; r <= ws.rowCount; r++) {
+        const row = ws.getRow(r);
+        const serial = row.getCell(1).value;
+        
+        if (!serial || String(serial).trim() === '') continue; 
+        const serialStr = String(serial).trim();
+        totalEquipos++;
+        
+        // --- AUDITORÍA QA (Guardando hasta 50 detalles) ---
+        if (serialesUnicos.has(serialStr)) { 
+            qaErrores++; 
+            if(qaDetalles.length < 50) qaDetalles.push(`Serial duplicado: ${serialStr}`); 
         }
+        serialesUnicos.add(serialStr);
+
+        const email = row.getCell(16).value;
+        if (email && !String(email).includes('@') && String(email) !== 'No Aplica' && String(email) !== 'No aplica') { 
+            qaErrores++; 
+            if(qaDetalles.length < 50) qaDetalles.push(`Email inválido en serial ${serialStr}: ${email}`); 
+        }
+        
+        const ip = row.getCell(8).value;
+        if (ip && !/^(\d{1,3}\.){3}\d{1,3}$/.test(String(ip)) && String(ip) !== '0.0.0.0' && String(ip) !== '1.1.1.1' && String(ip) !== 'No Aplica') { 
+            qaErrores++; 
+            if(qaDetalles.length < 50) qaDetalles.push(`IP inválida en serial ${serialStr}: ${ip}`); 
+        }
+
+        // --- MADUREZ ---
+        for (let c = 1; c <= baseCols; c++) { if (row.getCell(c).value != null && String(row.getCell(c).value).trim() !== '') filledBase++; }
+        for (let c = baseCols + 1; c <= maxCol; c++) { if (row.getCell(c).value != null && String(row.getCell(c).value).trim() !== '') filledAgas++; }
+    }
+
+    const pctBase = totalEquipos > 0 ? (filledBase / (totalEquipos * baseCols)) : 0;
+    const pctAgas = totalEquipos > 0 && maxCol > baseCols ? (filledAgas / (totalEquipos * (maxCol - baseCols))) : 0;
+    const reviewBase = Math.round(totalEquipos * pctBase);
+    const reviewAgas = Math.round(totalEquipos * pctAgas);
+    
+    const qaOk = Math.max(0, totalEquipos - qaErrores);
+
+    let matchedId = ''; const fname = file.name.toLowerCase();
+    for (const a of state.accounts) { if (fname.includes(a.name.toLowerCase().replace(/\s+/g, '_')) || fname.includes(a.id.toLowerCase())) { matchedId = a.id; break; } }
+
+    body.innerHTML = `
+      <div style="display:grid;grid-template-columns:1fr auto;gap:12px;margin-bottom:16px;font-size:14px">
+        <span>Total equipos válidos</span><strong>${totalEquipos}</strong>
+        <span>Madurez Col A-AF</span><strong>${(pctBase*100).toFixed(1)}% (${reviewBase} equipos eq.)</strong>
+        <span>Madurez Col AG-AS</span><strong>${(pctAgas*100).toFixed(1)}% (${reviewAgas} equipos eq.)</strong>
+        <span>QA Automático (Auditoría)</span><strong style="color:${qaErrores>0?'var(--danger)':'var(--success)'}">${qaOk} OK / ${qaErrores} errores</strong>
+      </div>
+      ${qaErrores > 0 ? `<div style="background:#fef2f2;color:#991b1b;padding:10px;border-radius:6px;font-size:12px;margin-bottom:16px;max-height:120px;overflow-y:auto"><strong>⚠ Errores detectados:</strong><ul style="margin:4px 0 0 16px;padding:0">${qaDetalles.slice(0, 10).map(d => `<li>${d}</li>`).join('')}</ul>${qaDetalles.length > 10 ? `<i>... y más errores guardados para el Dashboard.</i>` : ''}</div>` : ''}
+      <div style="background:#eff6ff;padding:12px;border-radius:8px;margin-bottom:16px">
+        <select id="importTargetAccount" style="width:100%;padding:10px;">
+          <option value="">-- Seleccionar Cuenta --</option>
+          ${state.accounts.map(a => `<option value="${a.id}" ${a.id === matchedId ? 'selected' : ''}>${a.name} (Avance actual: ${fmtPct(calcGlobal(a))})</option>`).join('')}
+        </select>
+      </div>`;
+      
+    btnConfirm.disabled = false;
+    btnConfirm.onclick = () => {
+      const accId = document.getElementById('importTargetAccount').value; 
+      if (!accId) { toast('Seleccioná cuenta'); return; }
+      const acc = state.accounts.find(a => a.id === accId);
+      
+      const isBetter = (totalEquipos > acc.total) || (reviewBase > acc.baseCount) || (reviewAgas > acc.agasCount) || (qaOk > acc.qaCount);
+
+      if (isBetter) {
+          acc.total = totalEquipos; 
+          acc.reviewed = totalEquipos;
+          acc.baseCount = reviewBase;
+          acc.agasCount = reviewAgas;
+          acc.qaCount = qaOk;
+          acc.updateDate = state.controlDate;
+          acc.qaDetails = qaDetalles; // <-- NUEVO: Guardamos los detalles
+          saveState(); modal.style.display = 'none'; render(); 
+          toast(`✓ ${acc.name} actualizada (QA: ${qaOk})`);
+      } else {
+          modal.style.display = 'none';
+          toast(`⚠ Archivo ignorado: El avance en el sistema es mayor o igual.`);
       }
-    });
-  } catch (e) { console.warn('Error al dibujar gráficos:', e); }
+    };
+  } catch (err) { body.innerHTML = `<div style="color:red;padding:20px">Error: ${err.message}</div>`; }
+  btnCancel.onclick = () => { modal.style.display = 'none'; };
 }
-
 
 function renderPlan(app) {
   const week = getCurrentWeek(state.controlDate);
   const isPrep = isPreparationPhase(state.controlDate);
   const prepDone = state.accounts.filter(a => a.responsible && a.total > 0).length;
   const avg = state.accounts.reduce((s,a)=>s+calcGlobal(a),0)/state.accounts.length;
-  const sorted = [...state.accounts].sort((a,b)=>{const p={'ATRASO CRÍTICO':0,'CRÍTICO':0,'ATRASO MENOR':1,'AL DÍA':2,'FINALIZADO':3,'SIN DATOS':4}; return (p[calcStatus(a)]??5)-(p[calcStatus(b)]??5);});
+
+const sorted = [...state.accounts].sort((a,b)=>{const p={'ATRASO CRÍTICO':0,'CRÍTICO':0,'ATRASO MENOR':1,'EN PLAZO':2,'AL DÍA':3,'FINALIZADO':4,'SIN DATOS':5}; return (p[calcStatus(a)]??6)-(p[calcStatus(b)]??6);});
+   
   app.innerHTML = `
     <div class="card plan-header"><div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:20px;"><div><div class="week-badge">${week.name} · ${week.period}</div><h2 style="font-size:22px;margin-top:10px;">Foco: ${week.focus}</h2><p class="help">${isPrep ? `Prep: ${prepDone}/12 cuentas` : `Meta: ${fmtPct(week.meta)}`}</p></div><div style="text-align:right"><div style="font-size:32px;font-weight:700;color:var(--primary);">${fmtPct(avg)}</div><div class="help">Avance prom.</div></div></div></div>
     ${isPrep ? `<div class="card"><h2>Preparación</h2><div class="prep-grid">${state.accounts.map(a=>{const ok=a.responsible&&a.total>0;return `<div class="prep-item ${ok?'ok':'pending'}" data-meeting="${a.id}"><div class="prep-icon">${ok?'✓':'○'}</div><div style="flex:1"><strong>${a.name}</strong><div class="help">${ok?a.responsible:'Pendiente'}</div></div><button class="btn btn-sm btn-primary">✎ Editar</button></div>`;}).join('')}</div></div>` 
@@ -816,7 +772,10 @@ function renderSettings(app) {
   document.getElementById('btnReset').addEventListener('click',()=>{ if(!confirm('¿Borrar todo?'))return; state=getInitialState(); saveState(); render(); });
 }
 
+
 function generateChartImage(config) { if (typeof Chart === 'undefined') return null; const c = document.createElement('canvas'); c.width = 900; c.height = 450; const chart = new Chart(c, config); const url = c.toDataURL('image/png', 1.0); chart.destroy(); return url.split(',')[1]; }
+
+
 async function exportToExcel() {
   if (typeof ExcelJS === 'undefined') { toast('ExcelJS no cargado. Revisá tu conexión.'); return; }
   toast('Generando Excel Ejecutivo con Hitos...');
@@ -912,14 +871,14 @@ async function exportToExcel() {
     c.value = h; c.font = { bold: true, size: 10, color: { argb: 'FFFFFFFF' } }; c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: colors.darkBlue } }; c.alignment = { horizontal: 'center', vertical: 'middle' }; c.border = borderStyle;
   });
 
-  accs.forEach((a, i) => {
+    accs.forEach((a, i) => {
     const r = 11 + i; const g = calcGlobal(a), st = calcStatus(a); const row = ws.getRow(r);
     row.getCell(1).value = a.name; row.getCell(2).value = a.osas; row.getCell(3).value = a.reviewed; row.getCell(4).value = fmtPct(g); row.getCell(5).value = st;
     for (let c = 1; c <= 5; c++) { row.getCell(c).border = borderStyle; row.getCell(c).alignment = { horizontal: 'center', vertical: 'middle' }; }
     row.getCell(1).alignment = { horizontal: 'left', vertical: 'middle' };
     
     const stCell = row.getCell(5);
-    if (st === 'AL DÍA' || st === 'FINALIZADO') { stCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD1FAE5' } }; stCell.font = { color: { argb: 'FF065F46' }, bold: true }; }
+    if (st === 'AL DÍA' || st === 'FINALIZADO' || st === 'EN PLAZO') { stCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD1FAE5' } }; stCell.font = { color: { argb: 'FF065F46' }, bold: true }; }
     else if (st === 'ATRASO MENOR') { stCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEF3C7' } }; stCell.font = { color: { argb: 'FF92400E' }, bold: true }; }
     else { stCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEE2E2' } }; stCell.font = { color: { argb: 'FF991B1B' }, bold: true }; }
   });
