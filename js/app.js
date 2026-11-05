@@ -36,7 +36,7 @@ const SCHEDULE = [
 ];
 
 let state = null;
-let currentView = 'dashboard'; // INICIA EN DASHBOARD POR DEFECTO
+let currentView = 'dashboard'; 
 let charts = {};
 
 /* ========== RESPALDO ========== */
@@ -229,7 +229,6 @@ function calcPhase(a) {
   if (p > 0) return 'Inventario base A-AF';
   return 'Preparación';
 }
-
 function calcStatus(a) {
   const p = calcGlobal(a);
   if (p >= 1) return 'FINALIZADO';
@@ -258,7 +257,6 @@ function calcStatus(a) {
       }
   }
 }
-
 function statusClass(s) {
   const map = { 
     'FINALIZADO': 'badge-finalizado', 
@@ -271,7 +269,6 @@ function statusClass(s) {
   };
   return map[s] || '';
 }
-
 function fmtPct(v) { if (v==null || isNaN(v)) return '—'; return (v*100).toFixed(1)+'%'; }
 function daysSinceDate(d) { if (!d) return null; return Math.floor((new Date(state.controlDate+'T00:00:00') - new Date(d+'T00:00:00'))/86400000); }
 function calcRiskSemaphore(r) {
@@ -344,7 +341,6 @@ function render() {
 }
 
 /* ========== VISTAS ========== */
-
 function openQAAlertsModal(accountName) {
   const acc = state.accounts.find(a => a.name === accountName);
   if (!acc || !acc.qaDetails || acc.qaDetails.length === 0) return;
@@ -439,8 +435,8 @@ function renderDashboard(app) {
   accs.forEach(a => counts[calcStatus(a)]++);
 
   const warnings = validateAll();
-  
   const accountsWithQA = accs.filter(a => a.qaDetails && a.qaDetails.length > 0);
+  const hasAlerts = warnings.length > 0 || accountsWithQA.length > 0;
 
   const week = getCurrentWeek(state.controlDate);
   const prep = isPreparationPhase(state.controlDate);
@@ -484,324 +480,52 @@ function renderDashboard(app) {
         <button class="btn btn-primary" onclick="document.querySelector('[data-view=backups]').click()">Ir a Respaldos →</button>
       </div>
     </div>` : ''}
-    
-    ${warnings.length ? `<div class="card" style="border-left:4px solid var(--warning);background:#fffbeb">
-      <h2 style="color:#92400e;font-size:14px">⚠ ${warnings.length} alerta(s) de integridad en el sistema</h2>
-      <ul style="margin:8px 0 0 20px;font-size:13px;color:#78350f">
-        ${warnings.slice(0,5).map(w=>`<li><strong>${w.account}</strong>: ${w.msg}</li>`).join('')}
-        ${warnings.length>5?`<li>… y ${warnings.length-5} más</li>`:''}
-      </ul></div>` : ''}
 
-    ${accountsWithQA.length > 0 ? `<div class="card" style="border-left:4px solid var(--danger);background:#fef2f2">
-      <h2 style="color:#991b1b;font-size:14px">🚨 Alertas de Calidad (QA) en archivos Excel</h2>
-      <ul style="margin:8px 0 0 20px;font-size:13px;color:#7f1d1d;">
-        ${accountsWithQA.map(a => `
-          <li style="margin-bottom:6px;"><strong>${a.name}</strong>: ${a.qaDetails.length} error(es). 
-          <a href="#" onclick="openQAAlertsModal('${a.name}'); return false;" style="color:#991b1b;text-decoration:underline;font-weight:bold;margin-left:6px;">Ver detalle</a></li>
-        `).join('')}
-      </ul>
-      <p class="help" style="margin-top:8px;color:#991b1b">Haz clic en "Ver detalle" para auditar lo que debe corregir el OSA.</p>
-    </div>` : ''}
+    <!-- CENTRO DE ALERTAS UNIFICADO -->
+    <div class="card" style="padding: 0; overflow: hidden; margin-bottom: 20px; border: 1px solid #e2e8f0; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+      <div style="padding: 12px 20px; background: #f8fafc; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center;">
+        <h2 style="margin: 0; font-size: 15px; color: #1e293b; display: flex; align-items: center; gap: 8px;">
+          <span style="font-size: 18px;">🔔</span> Centro de Alertas del Proyecto
+        </h2>
+        ${hasAlerts ? `<span style="background: #e2e8f0; color: #475569; font-size: 11px; padding: 2px 8px; border-radius: 12px; font-weight: bold;">${warnings.length + accountsWithQA.length} Pendientes</span>` : ''}
+      </div>
+      
+      ${accountsWithQA.length > 0 ? `
+      <div style="padding: 16px 20px; border-bottom: 1px solid #fecaca; background: #fef2f2;">
+        <h3 style="margin: 0 0 8px 0; font-size: 13px; color: #991b1b; text-transform: uppercase; letter-spacing: 0.5px; display: flex; align-items: center; gap: 6px;">
+          <span style="font-size: 16px;">🚨</span> Errores QA en archivos (Requiere acción del OSA)
+        </h3>
+        <ul style="margin: 0; padding-left: 24px; font-size: 13px; color: #7f1d1d;">
+          ${accountsWithQA.map(a => `
+            <li style="margin-bottom: 4px;"><strong>${a.name}</strong>: ${a.qaDetails.length} error(es) detectados.
+            <a href="#" onclick="openQAAlertsModal('${a.name}'); return false;" style="color: #991b1b; text-decoration: underline; font-weight: bold; margin-left: 6px;">Auditar</a></li>
+          `).join('')}
+        </ul>
+      </div>
+      ` : ''}
 
-    <div class="card" style="border-left: 4px solid var(--primary); background: linear-gradient(135deg, #f8fafc 0%, #eff6ff 100%); margin-bottom: 20px;">
-      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:15px;">
+      ${warnings.length > 0 ? `
+      <div style="padding: 16px 20px; background: #fffbeb;">
+        <h3 style="margin: 0 0 8px 0; font-size: 13px; color: #92400e; text-transform: uppercase; letter-spacing: 0.5px; display: flex; align-items: center; gap: 6px;">
+          <span style="font-size: 16px;">⚠️</span> Inconsistencias de Datos (Revisar carga manual)
+        </h3>
+        <ul style="margin: 0; padding-left: 24px; font-size: 13px; color: #78350f;">
+          ${warnings.slice(0, 6).map(w => `<li style="margin-bottom: 4px;"><strong>${w.account}</strong>: ${w.msg}</li>`).join('')}
+          ${warnings.length > 6 ? `<li style="list-style: none; margin-left: -20px; font-style: italic; margin-top: 4px;">... y ${warnings.length - 6} alertas más.</li>` : ''}
+        </ul>
+      </div>
+      ` : ''}
+
+      ${!hasAlerts ? `
+      <div style="padding: 20px; background: #f0fdf4; color: #166534; font-size: 14px; display: flex; align-items: center; gap: 10px;">
+        <span style="font-size: 24px;">✅</span> 
         <div>
-          <h2 style="margin:0; font-size:18px; color:#1e3a8a;">📍 Fase Actual: ${week.name} (${week.period})</h2>
-          <p class="help" style="margin:4px 0 0 0; font-size:14px; color:#3b82f6;">Foco: <strong>${week.focus}</strong></p>
-        </div>
-        <div style="text-align:right; background:white; padding:10px 20px; border-radius:8px; border:1px solid #e2e8f0; box-shadow:0 1px 2px rgba(0,0,0,0.05);">
-          <div style="font-size:11px; color:var(--gray-500); font-weight:bold; text-transform:uppercase; letter-spacing:0.5px;">Meta del Hito</div>
-          <div style="font-size:22px; font-weight:700; color:var(--primary);">${fmtPct(week.meta)}</div>
+          <strong style="display: block; font-size: 15px; margin-bottom: 2px;">Todo en orden</strong>
+          No hay errores QA pendientes ni inconsistencias lógicas en los datos actuales.
         </div>
       </div>
+      ` : ''}
     </div>
-     
-    <div class="kpi-grid">
-      <div class="kpi"><div class="kpi-label">Cuentas</div><div class="kpi-value">12</div><div class="kpi-sub">${totalOSAs} OSAs asignados</div></div>
-      <div class="kpi success"><div class="kpi-label">Avance promedio</div><div class="kpi-value">${fmtPct(avgProgress)}</div><div class="kpi-sub">Meta ${prep?'—':fmtPct(week.meta)}</div></div>
-      <div class="kpi success"><div class="kpi-label">Al día</div><div class="kpi-value">${counts['AL DÍA']+counts.FINALIZADO+counts['EN PLAZO']}</div><div class="kpi-sub">${counts['ATRASO MENOR']} en atraso menor</div></div>
-      <div class="kpi danger"><div class="kpi-label">Atraso crítico</div><div class="kpi-value">${counts['ATRASO CRÍTICO']+counts['CRÍTICO']}</div><div class="kpi-sub">${counts['SIN DATOS']} sin datos</div></div>
-      <div class="kpi"><div class="kpi-label">Equipos revisados</div><div class="kpi-value">${totalReviewed}</div><div class="kpi-sub">de ${totalEquip} totales</div></div>
-    </div>
-
-    ${prep ? `<div class="card"><h2>Hito de Preparación · ${prepDone}/12 cuentas listas</h2><p class="help">Cada cuenta debe tener responsable y total definidos. Se cumple antes del 30-10-2026.</p></div>` : ''}
-
-    <div class="charts-row">
-      <div class="card"><h2>Avance vs Meta por cuenta</h2><div class="chart-container"><canvas id="chartProgress"></canvas></div></div>
-      <div class="card"><h2>Distribución de estados</h2><div class="chart-container"><canvas id="chartStatus"></canvas></div></div>
-    </div>
-
-    <div class="card">
-      <h2>Resumen por cuenta</h2>
-               <div class="table-wrap"><table>
-            <thead><tr><th>Cuenta</th><th>OSAs</th><th>Total</th><th>Revisados</th><th>% Col A-AF</th><th>Col AG-AS</th><th>QA</th><th>Global</th><th>Meta</th><th>Brecha</th><th>Fase</th><th>Estado</th></tr></thead>
-            <tbody>${accs.map(a=>{
-              const g=calcGlobal(a), m=calcMeta(state.controlDate), gap=g-m, st=calcStatus(a);
-              return `<tr><td><strong>${a.name}</strong></td><td>${a.osas}</td><td>${a.total}</td><td>${a.reviewed}</td>
-                <td>${fmtPct(pctBase(a))}</td><td>${fmtPct(pctAGAS(a))}</td><td>${fmtPct(pctQA(a))}</td>
-                <td><strong>${fmtPct(g)}</strong></td><td>${fmtPct(m)}</td>
-                <td style="color:${gap<0?'var(--danger)':'var(--success)'}">${(gap*100).toFixed(1)} pts</td>
-                <td>${calcPhase(a)}</td><td><span class="badge ${statusClass(st)}">${st}</span></td></tr>`;}).join('')}
-            </tbody>
-          </table></div>
-    </div>
-
-    <div class="charts-row">
-      <div class="card">
-        <h2>Hitos del proyecto</h2>
-        <div class="table-wrap"><table>
-          <thead><tr><th>Hito</th><th>Fecha</th><th>Meta</th><th>Resultado</th><th>Situación</th><th>Comentarios / Justificación</th></tr></thead>
-          <tbody>${milestoneData.map(h=>{
-            const cls = h.sit.startsWith('CUMPLIDO')?'badge-verde':h.sit==='PENDIENTE'?'badge-rojo':'badge-sin-fecha';
-            return `<tr><td>${h.name}</td><td>${h.date}</td><td>${fmtPct(h.meta)}</td><td>${fmtPct(avgProgress)}</td>
-              <td><span class="badge ${cls}">${h.sit}</span></td>
-              <td style="font-size:12px;color:var(--gray-600)">${h.comment}</td></tr>`;
-          }).join('')}
-          </tbody>
-        </table></div>
-      </div>
-      <div class="card">
-        <h2>Estado de Hitos</h2>
-        <div class="chart-container"><canvas id="chartMilestones"></canvas></div>
-      </div>
-    </div>
-  `;
-
-  if (typeof Chart === 'undefined') {
-    console.warn('Chart.js no disponible; los gráficos no se muestran.');
-    return;
-  }
-
-  try {
-    charts.progress = new Chart(document.getElementById('chartProgress'), {
-      type:'bar',
-      data:{ labels:accs.map(a=>a.name), datasets:[
-        { label:'Avance', data:accs.map(a=>+(calcGlobal(a)*100).toFixed(1)), backgroundColor:'#2563eb', borderRadius:6 },
-        { label:'Meta', data:accs.map(()=>+(calcMeta(state.controlDate)*100).toFixed(1)), backgroundColor:'#94a3b8', borderRadius:6 },
-      ]},
-      options:{ responsive:true, maintainAspectRatio:false,
-        scales:{ y:{ beginAtZero:true, max:100, ticks:{ callback:v=>v+'%' } } },
-        plugins:{
-          legend:{ position:'bottom' },
-          datalabels: { anchor: 'end', align: 'top', formatter: (val) => val > 0 ? val + '%' : '', font: { size: 10, weight: 'bold' }, color: '#374151' }
-        }
-      }
-    });
-
-    charts.status = new Chart(document.getElementById('chartStatus'), {
-      type:'doughnut',
-      data:{ labels:['Al día / En plazo','Atraso menor','Atraso crítico','Finalizado','Sin datos'], datasets:[{
-        data:[counts['AL DÍA']+counts['EN PLAZO'],counts['ATRASO MENOR'],counts['ATRASO CRÍTICO']+counts['CRÍTICO'],counts.FINALIZADO,counts['SIN DATOS']],
-        backgroundColor:['#16a34a','#f59e0b','#dc2626','#0d9488','#9ca3af'], borderWidth:0,
-      }]},
-      options:{ responsive:true, maintainAspectRatio:false,
-        plugins:{
-          legend:{ position:'bottom' },
-          datalabels: { color: '#fff', font: { size: 12, weight: 'bold' }, formatter: (val) => val > 0 ? val : '' }
-        }
-      }
-    });
-
-    charts.milestones = new Chart(document.getElementById('chartMilestones'), {
-      type:'doughnut',
-      data:{ labels:['Cumplidos','Próximos','Pendientes'], datasets:[{
-        data:[hitosCumplidos, hitosProximos, hitosPendientes],
-        backgroundColor:['#16a34a', '#f59e0b', '#dc2626'], borderWidth:0,
-      }]},
-      options:{ responsive:true, maintainAspectRatio:false,
-        plugins:{
-          legend:{ position:'bottom' },
-          datalabels: { color: '#fff', font: { size: 14, weight: 'bold' }, formatter: (val) => val > 0 ? val : '' }
-        }
-      }
-    });
-  } catch (e) { console.warn('Error al dibujar gráficos:', e); }
-}
-
-/* ========== ROUTER ========== */
-function render() {
-  Object.values(charts).forEach(c => c && c.destroy && c.destroy());
-  charts = {};
-  updateBackupStatus();
-  
-  const cd = document.getElementById('controlDate');
-  if (cd && state && cd.value !== state.controlDate) {
-     cd.value = state.controlDate;
-  }
-  
-  const app = document.getElementById('app');
-  if (!app) return;
-  if (currentView === 'dashboard') renderDashboard(app);
-  else if (currentView === 'plan') renderPlan(app);
-  else if (currentView === 'accounts') renderAccounts(app);
-  else if (currentView === 'gantt') renderGantt(app);
-  else if (currentView === 'risks') renderRisks(app);
-  else if (currentView === 'history') renderHistory(app);
-  else if (currentView === 'schedule') renderSchedule(app);
-  else if (currentView === 'backups') renderBackups(app);
-  else if (currentView === 'instructions') renderInstructions(app);
-  else if (currentView === 'settings') renderSettings(app);
-}
-
-/* ========== VISTAS ========== */
-
-function openQAAlertsModal(accountName) {
-  const acc = state.accounts.find(a => a.name === accountName);
-  if (!acc || !acc.qaDetails || acc.qaDetails.length === 0) return;
-  
-  let modal = document.getElementById('qaAlertsModal');
-  if (!modal) {
-    modal = document.createElement('div');
-    modal.id = 'qaAlertsModal';
-    modal.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);display:grid;place-items:center;z-index:9999;';
-    document.body.appendChild(modal);
-  }
-  
-  modal.innerHTML = `
-    <div style="background:white;border-radius:12px;width:90%;max-width:600px;max-height:80vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 10px 25px rgba(0,0,0,0.2);">
-      <div style="padding:16px;border-bottom:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center;background:#fef2f2;">
-        <h2 style="margin:0;font-size:16px;color:#991b1b;">Errores QA: ${acc.name}</h2>
-        <button id="qaAlertsCloseX" style="background:none;border:none;font-size:24px;cursor:pointer;color:#991b1b;line-height:1;">&times;</button>
-      </div>
-      <div style="padding:16px;overflow-y:auto;font-size:14px;color:#374151;">
-        <ul style="margin:0;padding-left:20px;">
-          ${acc.qaDetails.map(d => `<li style="margin-bottom:6px;">${d}</li>`).join('')}
-        </ul>
-      </div>
-      <div style="padding:16px;border-top:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center;gap:10px;background:#f8fafc;flex-wrap:wrap;">
-        <button class="btn" id="qaAlertsExportBtn" style="background:#991b1b;color:#fff;border:none;">📥 Descargar errores en Excel</button>
-        <button class="btn btn-primary" id="qaAlertsCloseBtn">Cerrar</button>
-      </div>
-    </div>
-  `;
-  modal.style.display = 'grid';
-  
-  document.getElementById('qaAlertsCloseX').onclick = () => { modal.style.display = 'none'; };
-  document.getElementById('qaAlertsCloseBtn').onclick = () => { modal.style.display = 'none'; };
-  document.getElementById('qaAlertsExportBtn').onclick = () => { exportQAErrorsToExcel(acc.name); };
-}
-
-async function exportQAErrorsToExcel(accountName) {
-  if (typeof ExcelJS === 'undefined') { toast('ExcelJS no cargó. Revisá tu conexión.'); return; }
-  const acc = state.accounts.find(a => a.name === accountName);
-  if (!acc || !acc.qaDetails || acc.qaDetails.length === 0) { toast('Sin errores QA para exportar'); return; }
-  
-  try {
-    const wb = new ExcelJS.Workbook();
-    wb.creator = 'Control Proyecto Inventarios MPS 2026';
-    
-    const ws = wb.addWorksheet('Errores QA');
-    ws.columns = [
-      { header: '#', key: 'num', width: 8 },
-      { header: 'Cuenta', key: 'account', width: 26 },
-      { header: 'Detalle del error', key: 'detail', width: 80 }
-    ];
-    
-    acc.qaDetails.forEach((d, i) => {
-      ws.addRow({ num: i + 1, account: acc.name, detail: d });
-    });
-    
-    const header = ws.getRow(1);
-    header.eachCell(c => {
-      c.font = { bold: true, color: { argb: 'FFFFFFFF' } };
-      c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF991B1B' } };
-      c.alignment = { horizontal: 'center', vertical: 'middle' };
-    });
-    header.height = 22;
-    
-    ws.eachRow((row, r) => {
-      if (r !== 1) {
-        row.eachCell(c => {
-          c.border = { top: { style: 'thin', color: { argb: 'FFE2E8F0' } }, left: { style: 'thin', color: { argb: 'FFE2E8F0' } }, bottom: { style: 'thin', color: { argb: 'FFE2E8F0' } }, right: { style: 'thin', color: { argb: 'FFE2E8F0' } } };
-          c.alignment = { vertical: 'middle', wrapText: true };
-        });
-      }
-    });
-    
-    const buf = await wb.xlsx.writeBuffer();
-    const safeName = acc.name.replace(/\s+/g, '_').replace(/[^a-zA-Z0-9_\-]/g, '');
-    download(new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), `QA_Errores_${safeName}_${new Date().toISOString().slice(0,10)}.xlsx`);
-    toast(`✓ Errores de ${acc.name} exportados a Excel`);
-  } catch (e) {
-    console.error(e);
-    toast('Error al exportar: ' + e.message);
-  }
-}
-
-function renderDashboard(app) {
-  const accs = state.accounts;
-  const totalOSAs = accs.reduce((s,a)=>s+(+a.osas||0),0);
-  const avgProgress = accs.reduce((s,a)=>s+calcGlobal(a),0)/accs.length;
-  const totalReviewed = accs.reduce((s,a)=>s+(+a.reviewed||0),0);
-  const totalEquip = accs.reduce((s,a)=>s+(+a.total||0),0);
-
-  const counts = { FINALIZADO:0, 'AL DÍA':0, 'EN PLAZO':0, 'ATRASO MENOR':0, 'ATRASO CRÍTICO':0, 'CRÍTICO':0, 'SIN DATOS':0 };
-  accs.forEach(a => counts[calcStatus(a)]++);
-
-  const warnings = validateAll();
-  
-  const accountsWithQA = accs.filter(a => a.qaDetails && a.qaDetails.length > 0);
-
-  const week = getCurrentWeek(state.controlDate);
-  const prep = isPreparationPhase(state.controlDate);
-  const prepDone = accs.filter(a => a.responsible && a.total > 0).length;
-  const bStatus = getBackupStatus();
-
-  const milestones = [
-    {name:'Preparación', date:'2026-10-30', meta:0.10},
-    {name:'Inventario base', date:'2026-11-06', meta:0.55},
-    {name:'Corte AG-AS', date:'2026-11-13', meta:0.75},
-    {name:'Cierre AG-AS', date:'2026-11-20', meta:0.90},
-    {name:'QA', date:'2026-11-27', meta:0.98},
-    {name:'Cierre', date:'2026-11-30', meta:1.00},
-  ];
-  let hitosCumplidos = 0, hitosProximos = 0, hitosPendientes = 0;
-
-  const milestoneData = milestones.map(h => {
-    let sit, comment = '';
-    if (state.controlDate < h.date) {
-      sit = 'PRÓXIMO'; comment = 'Aún no es la fecha de evaluación.'; hitosProximos++;
-    } else if (h.name === 'Preparación') {
-      const pending = accs.filter(a => !(a.responsible && a.total > 0));
-      if (pending.length === 0) { 
-          sit = 'CUMPLIDO · 100%'; comment = 'Todas las cuentas listas.'; hitosCumplidos++; 
-      } else if (pending.length === 1 && (pending[0].id === 'provida' || pending[0].id === 'uai')) { 
-          sit = 'CUMPLIDO · EXCEPCIÓN'; comment = `${pending[0].name} excluida (Justificada).`; hitosCumplidos++; 
-      } else { 
-          sit = 'PENDIENTE'; comment = `Falta completar: ${pending.map(p=>p.name).join(', ')}`; hitosPendientes++; 
-      }
-    } else {
-      if (avgProgress >= h.meta) { sit = 'CUMPLIDO · '+fmtPct(avgProgress); comment = 'Meta alcanzada.'; hitosCumplidos++; }
-      else { sit = 'PENDIENTE'; comment = `Brecha global de ${(h.meta*100 - avgProgress*100).toFixed(1)} pts.`; hitosPendientes++; }
-    }
-    return { ...h, sit, comment };
-  });
-
-  app.innerHTML = `
-    ${bStatus.level !== 'ok' ? `<div class="card" style="border-left:4px solid var(--${bStatus.level === 'danger' ? 'danger' : 'warning'});background:${bStatus.level === 'danger' ? '#fef2f2' : '#fffbeb'}">
-      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
-        <div><strong style="color:${bStatus.level === 'danger' ? '#991b1b' : '#92400e'}">${bStatus.msg}</strong><div class="help">${bStatus.long}</div></div>
-        <button class="btn btn-primary" onclick="document.querySelector('[data-view=backups]').click()">Ir a Respaldos →</button>
-      </div>
-    </div>` : ''}
-    
-    ${warnings.length ? `<div class="card" style="border-left:4px solid var(--warning);background:#fffbeb">
-      <h2 style="color:#92400e;font-size:14px">⚠ ${warnings.length} alerta(s) de integridad en el sistema</h2>
-      <ul style="margin:8px 0 0 20px;font-size:13px;color:#78350f">
-        ${warnings.slice(0,5).map(w=>`<li><strong>${w.account}</strong>: ${w.msg}</li>`).join('')}
-        ${warnings.length>5?`<li>… y ${warnings.length-5} más</li>`:''}
-      </ul></div>` : ''}
-
-    ${accountsWithQA.length > 0 ? `<div class="card" style="border-left:4px solid var(--danger);background:#fef2f2">
-      <h2 style="color:#991b1b;font-size:14px">🚨 Alertas de Calidad (QA) en archivos Excel</h2>
-      <ul style="margin:8px 0 0 20px;font-size:13px;color:#7f1d1d;">
-        ${accountsWithQA.map(a => `
-          <li style="margin-bottom:6px;"><strong>${a.name}</strong>: ${a.qaDetails.length} error(es). 
-          <a href="#" onclick="openQAAlertsModal('${a.name}'); return false;" style="color:#991b1b;text-decoration:underline;font-weight:bold;margin-left:6px;">Ver detalle</a></li>
-        `).join('')}
-      </ul>
-      <p class="help" style="margin-top:8px;color:#991b1b">Haz clic en "Ver detalle" para auditar lo que debe corregir el OSA.</p>
-    </div>` : ''}
 
     <div class="card" style="border-left: 4px solid var(--primary); background: linear-gradient(135deg, #f8fafc 0%, #eff6ff 100%); margin-bottom: 20px;">
       <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:15px;">
@@ -945,14 +669,12 @@ async function openImportModal(file) {
         const serialStr = String(serial).trim();
         totalEquipos++;
         
-        // --- AUDITORÍA QA (Guardando detalles) ---
         if (serialesUnicos.has(serialStr)) { 
             qaErrores++; 
             if(qaDetalles.length < 50) qaDetalles.push(`Serial duplicado: ${serialStr}`); 
         }
         serialesUnicos.add(serialStr);
 
-        // CORRECCIÓN: El correo está en la columna 17 (Q)
         const email = row.getCell(17).value;
         if (email && !String(email).includes('@') && String(email) !== 'No Aplica' && String(email) !== 'No aplica') { 
             qaErrores++; 
@@ -965,7 +687,6 @@ async function openImportModal(file) {
             if(qaDetalles.length < 50) qaDetalles.push(`IP inválida en serial ${serialStr}: ${ip}`); 
         }
 
-        // --- MADUREZ ---
         for (let c = 1; c <= baseCols; c++) { if (row.getCell(c).value != null && String(row.getCell(c).value).trim() !== '') filledBase++; }
         for (let c = baseCols + 1; c <= maxCol; c++) { if (row.getCell(c).value != null && String(row.getCell(c).value).trim() !== '') filledAgas++; }
     }
@@ -1038,7 +759,6 @@ function renderPlan(app) {
   app.querySelectorAll('[data-meeting]').forEach(b=>b.addEventListener('click',()=>openReunionModal(b.dataset.meeting)));
 }
 
-
 function renderAccounts(app) {
   const warnings = validateAll();
   const lastSnap = getLastSnapshotByAccount();
@@ -1053,7 +773,7 @@ function renderAccounts(app) {
     const g=calcGlobal(a), st=calcStatus(a);
     const w = warnings.filter(x=>x.accountId===a.id);
     const hasQA = a.qaDetails && a.qaDetails.length > 0;
-    return `<tr data-id="${a.id}" style="${w.length?'background:#fef2f2':''}">
+    return `<tr data-id="${a.id}" style="${w.length?'background:#fffbeb; border-left: 4px solid #f59e0b;':''}">
       <td><strong>${a.name}</strong>${hasQA ? `<button class="btn-qa-warning" data-qa="${a.id}" title="Ver ${a.qaDetails.length} error(es) QA detectado(s)" style="background:#fef2f2;border:1px solid #fca5a5;color:#991b1b;border-radius:6px;padding:2px 6px;font-size:12px;margin-left:6px;cursor:pointer;font-weight:bold;line-height:1;">⚠️ ${a.qaDetails.length}</button>` : ''}</td>
       <td><input type="number" min="0" value="${a.osas}" data-field="osas"></td><td><input type="text" value="${a.responsible}" data-field="responsible"></td>
       <td><input type="number" min="0" value="${a.total}" data-field="total"></td><td><input type="number" min="0" value="${a.reviewed}" data-field="reviewed"></td>
@@ -1082,7 +802,6 @@ function renderAccounts(app) {
     });
   });
 
-  // NUEVO: Acceso directo al modal de errores QA desde el nombre de la cuenta
   tbody.querySelectorAll('[data-qa]').forEach(btn => {
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -1132,7 +851,6 @@ function openReunionModal(accountId) {
   };
 }
 
-
 function renderGantt(app) {
   const dates = []; let curr = new Date('2026-10-29T00:00:00'), end = new Date('2026-11-30T00:00:00');
   while (curr <= end) { dates.push(curr.toISOString().slice(0,10)); curr.setDate(curr.getDate() + 1); }
@@ -1153,7 +871,6 @@ function renderRisks(app) {
 function renderHistory(app) {
   const sorted = [...state.history].sort((a,b)=>b.date.localeCompare(a.date));
   
-  // NUEVO: calcular evolución histórica (promedio global por fecha de corte)
   const byDate = {};
   state.history.forEach(h => {
     if (!byDate[h.date]) byDate[h.date] = [];
@@ -1175,7 +892,6 @@ function renderHistory(app) {
   
   document.getElementById('btnSnap2').addEventListener('click', takeSnapshot);
   
-  // NUEVO: gráfico de línea con evolución histórica
   if (evoDates.length > 0 && typeof Chart !== 'undefined') {
     try {
       const canvas = document.getElementById('chartEvoHistory');
@@ -1230,7 +946,6 @@ function renderHistory(app) {
     } catch (e) { console.warn('Error al dibujar gráfico de evolución:', e); }
   }
 }
-
 
 function renderSchedule(app) {
   app.innerHTML = `<div class="card"><h2>Cronograma semanal</h2><div class="table-wrap"><table><thead><tr><th>Semana</th><th>Periodo</th><th>Fase</th><th>OSA</th><th>Supervisor</th><th>Entregable</th><th>Meta</th></tr></thead><tbody>${SCHEDULE.map(s=>`<tr><td><strong>${s.week}</strong></td><td>${s.period}</td><td>${s.phase}</td><td style="font-size:12px">${s.osaAction}</td><td style="font-size:12px">${s.supAction}</td><td style="font-size:12px">${s.deliverable}</td><td><span class="badge badge-sin-fecha" style="background:var(--primary);color:#fff">${fmtPct(s.meta)}</span></td></tr>`).join('')}</tbody></table></div></div>`;
@@ -1289,7 +1004,7 @@ function renderInstructions(app) {
       <div class="instruction-step">
         <h4>¿Qué hace cada parte del sitio?</h4>
         <ul>
-          <li><strong>Dashboard:</strong> Vista ejecutiva. Muestra los KPIs (tarjetas), gráficos de avance vs meta, distribución de estados y los hitos del proyecto. No se edita manualmente; se alimenta de las demás pestañas.</li>
+          <li><strong>Dashboard:</strong> Vista ejecutiva. Muestra los KPIs (tarjetas), gráficos de avance vs meta, distribución de estados y los hitos del proyecto. Incluye un Centro de Alertas unificado. No se edita manualmente; se alimenta de las demás pestañas.</li>
           <li><strong>Plan Semanal:</strong> Te indica en qué semana del cronograma estás, cuál es el foco actual (ej: Levantamiento A-AF) y te muestra las reuniones prioritarias ordenadas por criticidad (las rojas primero).</li>
           <li><strong>Inventario Cuentas:</strong> Es la hoja principal de carga. Aquí ingresas los datos de cada cuenta (Total equipos, Revisados, Base A-AF, AG-AS y QA), registras bloqueos y observaciones. Si la cuenta tiene errores QA detectados por la auditoría del Excel, verás un botón ⚠️ junto a su nombre para ver el detalle y descargar los errores.</li>
           <li><strong>Gantt:</strong> Muestra la línea de tiempo comprometida para cada cuenta y fase, con vista de días para ver la evolución temporal.</li>
@@ -1357,12 +1072,10 @@ function renderSettings(app) {
   document.getElementById('btnReset').addEventListener('click',()=>{ if(!confirm('¿Borrar todo?'))return; state=getInitialState(); saveState(); render(); });
 }
 
-
 function generateChartImage(config) { 
   if (typeof Chart === 'undefined') return null; 
   const c = document.createElement('canvas'); 
   c.width = 900; c.height = 450; 
-  // Forzamos que el gráfico temporal use el plugin de etiquetas y usamos su método oficial de exportación
   const chart = new Chart(c, { ...config, plugins: [ChartDataLabels] }); 
   const url = chart.toBase64Image(); 
   chart.destroy(); 
@@ -1382,7 +1095,6 @@ async function exportToExcel() {
   accs.forEach(a=>counts[calcStatus(a)]++);
   const enRojo = counts['ATRASO CRÍTICO'] + counts['CRÍTICO'];
 
-  // --- Lógica de Hitos ---
   const milestones = [
     {name:'Preparación', date:'2026-10-30', meta:0.10},
     {name:'Inventario base', date:'2026-11-06', meta:0.55},
@@ -1417,11 +1129,9 @@ async function exportToExcel() {
   const colors = { darkBlue: 'FF1E3A8A', teal: 'FF0D9488', blue: 'FF2563EB', purple: 'FF8B5CF6', red: 'FFDC2626', green: 'FF16A34A', border: 'FFE2E8F0' };
   const borderStyle = { top: { style: 'thin', color: { argb: colors.border } }, left: { style: 'thin', color: { argb: colors.border } }, bottom: { style: 'thin', color: { argb: colors.border } }, right: { style: 'thin', color: { argb: colors.border } } };
 
-  /* ==================== HOJA 1: 01_Dashboard ==================== */
   const ws = wb.addWorksheet('01_Dashboard', { views:[{showGridLines:false}], properties:{ tabColor:{argb: colors.teal} } });
   ws.columns = [{width:16},{width:10},{width:10},{width:10},{width:10},{width:10},{width:10},{width:10},{width:18},{width:12},{width:12},{width:12}];
 
-  // 1. Cabecera
   ws.mergeCells('A1:L2');
   const title = ws.getCell('A1');
   title.value = 'DASHBOARD EJECUTIVO DEL PROYECTO';
@@ -1434,7 +1144,6 @@ async function exportToExcel() {
   ws.getCell('A3').value = `Área MPS / Seguimiento de 12 cuentas / Cierre comprometido: 30-11-2026`;
   ws.getCell('A3').font = { size:10, color:{argb:'FF64748B'} };
 
-  // 2. Cuadros KPI
   const kpis = [
     {label:'CUENTAS', value: 12, startCol: 1, color: colors.teal},
     {label:'OSAs', value: totalOSAs, startCol: 3, color: colors.blue},
@@ -1453,7 +1162,6 @@ async function exportToExcel() {
     vc.value = k.value; vc.font = { bold: true, size: 18, color: { argb: 'FF1E293B' } }; vc.alignment = { horizontal: 'center', vertical: 'middle' }; vc.border = borderStyle;
   });
 
-  // 3. Tabla de Resumen (Izquierda)
   ws.mergeCells('A9:E9');
   ws.getCell('A9').value = 'Resumen por cuenta';
   ws.getCell('A9').font = { bold:true, size:12, color:{argb: colors.darkBlue} };
@@ -1476,7 +1184,6 @@ async function exportToExcel() {
     else { stCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEE2E2' } }; stCell.font = { color: { argb: 'FF991B1B' }, bold: true }; }
   });
 
-  // 4. Tabla de Hitos (Izquierda, debajo de cuentas)
   const startRowHitos = 26;
   ws.mergeCells(`A${startRowHitos}:E${startRowHitos}`);
   ws.getCell(`A${startRowHitos}`).value = 'Hitos y metas';
@@ -1500,8 +1207,6 @@ async function exportToExcel() {
     else { sitCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEE2E2' } }; sitCell.font = { color: { argb: 'FF991B1B' }, bold: true }; }
   });
 
-  // 5. Gráficos
-  // Gráfico de Barras (Arriba a la derecha)
   const barImg = generateChartImage({
     type:'bar',
     data:{ labels:accs.map(a=>a.name), datasets:[{ label:'Avance', data:accs.map(a=>+(calcGlobal(a)*100).toFixed(1)), backgroundColor:'#2563eb' }]},
@@ -1516,7 +1221,6 @@ async function exportToExcel() {
   });
   if (barImg) ws.addImage(wb.addImage({base64:barImg,extension:'png'}), { tl:{col:6, row:9}, ext:{width:500,height:250} });
 
-  // Gráfico Dona Hitos (Abajo a la derecha)
   const donaHitosImg = generateChartImage({
     type:'doughnut',
     data:{ labels:['Cumplidos','Próximos','Pendientes'], datasets:[{ data:[hitosCumplidos, hitosProximos, hitosPendientes], backgroundColor:['#16a34a', '#f59e0b', '#dc2626'] }]},
@@ -1537,8 +1241,6 @@ async function exportToExcel() {
    
   if (donaHitosImg) ws.addImage(wb.addImage({base64:donaHitosImg,extension:'png'}), { tl:{col:6, row:startRowHitos}, ext:{width:450,height:250} });
 
-
-  /* ==================== HOJA 2: 02_Inventario ==================== */
   const wsA = wb.addWorksheet('02_Inventario', { properties:{ tabColor:{argb: colors.green} } });
   wsA.columns = [
     {header:'Cuenta',key:'name',width:22},{header:'OSAs',key:'osas',width:8},{header:'Responsable',key:'responsible',width:24},
@@ -1577,7 +1279,6 @@ async function init() {
     cd.addEventListener('change', e => { state.controlDate = e.target.value; saveState(); render(); }); 
   }
   
-  // Mover el botón de "Instrucciones" al final del menú de navegación
   const nav = document.querySelector('.app-nav');
   const instrBtn = document.querySelector('.app-nav [data-view="instructions"]');
   if (nav && instrBtn) {
@@ -1602,7 +1303,6 @@ async function init() {
   setupUnloadWarning(); 
   updateBackupStatus(); 
   
-  // Asegurar que el Dashboard quede seleccionado visualmente al cargar
   document.querySelectorAll('.app-nav button').forEach(x=>x.classList.remove('active'));
   document.querySelector('.app-nav button[data-view="dashboard"]')?.classList.add('active');
   
