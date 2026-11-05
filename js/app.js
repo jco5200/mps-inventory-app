@@ -434,9 +434,12 @@ function renderDashboard(app) {
   const counts = { FINALIZADO:0, 'AL DÍA':0, 'EN PLAZO':0, 'ATRASO MENOR':0, 'ATRASO CRÍTICO':0, 'CRÍTICO':0, 'SIN DATOS':0 };
   accs.forEach(a => counts[calcStatus(a)]++);
 
-  const warnings = validateAll();
+  // Solo consideramos errores QA reales (archivos con fallas)
   const accountsWithQA = accs.filter(a => a.qaDetails && a.qaDetails.length > 0);
-  const hasAlerts = warnings.length > 0 || accountsWithQA.length > 0;
+  const hasErrors = accountsWithQA.length > 0;
+  
+  // Contamos cuántas cuentas tienen equipos cargados (Total > 0)
+  const cuentasCargadas = accs.filter(a => a.total > 0).length;
 
   const week = getCurrentWeek(state.controlDate);
   const prep = isPreparationPhase(state.controlDate);
@@ -485,13 +488,15 @@ function renderDashboard(app) {
     <div class="card" style="padding: 0; overflow: hidden; margin-bottom: 20px; border: 1px solid #e2e8f0; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
       <div style="padding: 12px 20px; background: #f8fafc; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center;">
         <h2 style="margin: 0; font-size: 15px; color: #1e293b; display: flex; align-items: center; gap: 8px;">
-          <span style="font-size: 18px;">🔔</span> Centro de Alertas del Proyecto
+          <span style="font-size: 18px;">🔔</span> Estado del Sistema
         </h2>
-        ${hasAlerts ? `<span style="background: #e2e8f0; color: #475569; font-size: 11px; padding: 2px 8px; border-radius: 12px; font-weight: bold;">${warnings.length + accountsWithQA.length} Pendientes</span>` : ''}
+        ${hasErrors 
+          ? `<span style="background: #fecaca; color: #991b1b; font-size: 11px; padding: 2px 8px; border-radius: 12px; font-weight: bold;">${accountsWithQA.length} Cuentas con errores QA</span>` 
+          : `<span style="background: #dcfce7; color: #166534; font-size: 11px; padding: 2px 8px; border-radius: 12px; font-weight: bold;">Sin errores QA</span>`}
       </div>
       
-      ${accountsWithQA.length > 0 ? `
-      <div style="padding: 16px 20px; border-bottom: 1px solid #fecaca; background: #fef2f2;">
+      ${hasErrors ? `
+      <div style="padding: 16px 20px; background: #fef2f2;">
         <h3 style="margin: 0 0 8px 0; font-size: 13px; color: #991b1b; text-transform: uppercase; letter-spacing: 0.5px; display: flex; align-items: center; gap: 6px;">
           <span style="font-size: 16px;">🚨</span> Errores QA en archivos (Requiere acción del OSA)
         </h3>
@@ -502,29 +507,15 @@ function renderDashboard(app) {
           `).join('')}
         </ul>
       </div>
-      ` : ''}
-
-      ${warnings.length > 0 ? `
-      <div style="padding: 16px 20px; background: #ffffff;">
-        <h3 style="margin: 0 0 8px 0; font-size: 13px; color: #475569; text-transform: uppercase; letter-spacing: 0.5px; display: flex; align-items: center; gap: 6px;">
-          <span style="font-size: 16px;">📋</span> Seguimiento de Lógica de Datos (Revisar)
-        </h3>
-        <ul style="margin: 0; padding-left: 24px; font-size: 13px; color: #64748b;">
-          ${warnings.slice(0, 6).map(w => `<li style="margin-bottom: 4px;"><strong>${w.account}</strong>: ${w.msg}</li>`).join('')}
-          ${warnings.length > 6 ? `<li style="list-style: none; margin-left: -20px; font-style: italic; margin-top: 4px;">... y ${warnings.length - 6} alertas más.</li>` : ''}
-        </ul>
-      </div>
-      ` : ''}
-
-      ${!hasAlerts ? `
-      <div style="padding: 20px; background: #f0fdf4; color: #166534; font-size: 14px; display: flex; align-items: center; gap: 10px;">
-        <span style="font-size: 24px;">✅</span> 
+      ` : `
+      <div style="padding: 20px; background: #f0fdf4; color: #166534; font-size: 14px; display: flex; align-items: center; gap: 12px;">
+        <span style="font-size: 28px;">✅</span> 
         <div>
-          <strong style="display: block; font-size: 15px; margin-bottom: 2px;">Todo en orden</strong>
-          No hay errores QA pendientes ni inconsistencias lógicas en los datos actuales.
+          <strong style="display: block; font-size: 16px; margin-bottom: 4px;">Todo en orden</strong>
+          Se han cargado exitosamente <strong>${cuentasCargadas} cuentas</strong> en el sistema. No se detectaron errores QA en los archivos importados.
         </div>
       </div>
-      ` : ''}
+      `}
     </div>
 
     <div class="card" style="border-left: 4px solid var(--primary); background: linear-gradient(135deg, #f8fafc 0%, #eff6ff 100%); margin-bottom: 20px;">
