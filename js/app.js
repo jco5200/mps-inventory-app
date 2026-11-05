@@ -505,11 +505,11 @@ function renderDashboard(app) {
       ` : ''}
 
       ${warnings.length > 0 ? `
-      <div style="padding: 16px 20px; background: #fffbeb;">
-        <h3 style="margin: 0 0 8px 0; font-size: 13px; color: #92400e; text-transform: uppercase; letter-spacing: 0.5px; display: flex; align-items: center; gap: 6px;">
-          <span style="font-size: 16px;">⚠️</span> Inconsistencias de Datos (Revisar carga manual)
+      <div style="padding: 16px 20px; background: #ffffff;">
+        <h3 style="margin: 0 0 8px 0; font-size: 13px; color: #475569; text-transform: uppercase; letter-spacing: 0.5px; display: flex; align-items: center; gap: 6px;">
+          <span style="font-size: 16px;">📋</span> Seguimiento de Lógica de Datos (Revisar)
         </h3>
-        <ul style="margin: 0; padding-left: 24px; font-size: 13px; color: #78350f;">
+        <ul style="margin: 0; padding-left: 24px; font-size: 13px; color: #64748b;">
           ${warnings.slice(0, 6).map(w => `<li style="margin-bottom: 4px;"><strong>${w.account}</strong>: ${w.msg}</li>`).join('')}
           ${warnings.length > 6 ? `<li style="list-style: none; margin-left: -20px; font-style: italic; margin-top: 4px;">... y ${warnings.length - 6} alertas más.</li>` : ''}
         </ul>
