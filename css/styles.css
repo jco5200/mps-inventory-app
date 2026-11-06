@@ -176,3 +176,31 @@ td select { min-width: 100px; }
   .reunion-metrics { justify-content: space-between; }
   .reunion-kpis { grid-template-columns: 1fr; }
 }
+/* =============================================================
+   RESPONSIVE DESIGN (Adaptabilidad a Tablets y Celulares)
+   ============================================================= */
+
+/* Contenedores de tablas con scroll suave en móviles */
+.table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+
+/* Pantallas Medianas (Tablets) */
+@media (max-width: 992px) {
+  .kpi-grid { grid-template-columns: repeat(2, 1fr) !important; }
+  .charts-row { grid-template-columns: 1fr !important; }
+  .form-grid { grid-template-columns: 1fr !important; }
+  .backup-grid { grid-template-columns: repeat(2, 1fr) !important; }
+  .prep-grid { grid-template-columns: 1fr !important; }
+}
+
+/* Pantallas Pequeñas (Celulares) */
+@media (max-width: 768px) {
+  .app-header { flex-direction: column; align-items: flex-start; padding: 10px; gap: 15px; }
+  .app-header > div { width: 100%; flex-wrap: wrap; gap: 10px; }
+  .app-nav { overflow-x: auto; white-space: nowrap; flex-wrap: nowrap; display: flex; padding-bottom: 5px; }
+  .app-nav button { flex-shrink: 0; font-size: 14px; padding: 8px 12px; }
+  .kpi-grid { grid-template-columns: 1fr !important; }
+  .backup-grid { grid-template-columns: 1fr !important; }
+  .card { padding: 15px !important; }
+  .chart-container { height: 250px !important; }
+  #qaAlertsModal > div { width: 95% !important; }
+}
