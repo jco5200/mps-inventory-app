@@ -601,7 +601,7 @@ function renderDashboard(app) {
   }
 
   try {
-        charts.progress = new Chart(document.getElementById('chartProgress'), {
+            charts.progress = new Chart(document.getElementById('chartProgress'), {
       type:'bar',
       data:{ 
         labels: accs.map(a => a.criticalBlock ? '🚫 ' + a.name : a.name), 
@@ -609,15 +609,15 @@ function renderDashboard(app) {
         { 
           label:'Avance', 
           data:accs.map(a=>+(calcGlobal(a)*100).toFixed(1)), 
-          // Si está bloqueado, barra roja fuerte. Si no, azul.
-          backgroundColor: accs.map(a => a.criticalBlock ? '#dc2626' : '#2563eb'), 
+          // La barra de avance se queda Azul siempre para ver el progreso real
+          backgroundColor: '#2563eb', 
           borderRadius:6 
         },
         { 
           label:'Meta', 
           data:accs.map(()=>+(calcMeta(state.controlDate)*100).toFixed(1)), 
-          // Si está bloqueado, barra rojo claro. Si no, gris.
-          backgroundColor: accs.map(a => a.criticalBlock ? '#fca5a5' : '#94a3b8'), 
+          // La barra de Meta (gris) se pinta de ROJO si la cuenta tiene bloqueo
+          backgroundColor: accs.map(a => a.criticalBlock ? '#dc2626' : '#94a3b8'), 
           borderRadius:6 
         },
       ]},
@@ -625,11 +625,18 @@ function renderDashboard(app) {
         scales:{ y:{ beginAtZero:true, max:100, ticks:{ callback:v=>v+'%' } } },
         plugins:{
           legend:{ position:'bottom' },
-          datalabels: { anchor: 'end', align: 'top', formatter: (val) => val > 0 ? val + '%' : '', font: { size: 10, weight: 'bold' }, color: '#374151' }
+          datalabels: { 
+            anchor: 'end', 
+            align: 'top', 
+            formatter: (val) => val > 0 ? val + '%' : '', 
+            font: { size: 10, weight: 'bold' }, 
+            color: '#374151' 
+          }
         }
       }
     });
 
+     
     charts.status = new Chart(document.getElementById('chartStatus'), {
       type:'doughnut',
       data:{ labels:['Al día / En plazo','Atraso menor','Atraso crítico','Finalizado','Sin datos'], datasets:[{
