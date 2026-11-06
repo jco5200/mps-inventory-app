@@ -204,3 +204,46 @@ td select { min-width: 100px; }
   .chart-container { height: 250px !important; }
   #qaAlertsModal > div { width: 95% !important; }
 }
+
+/* =============================================================
+   AJUSTES DE ENTORNO PARA 6 KPIs Y GRÁFICOS EN PANTALLAS GRANDES
+   ============================================================= */
+
+/* Evita que los gráficos o tarjetas empujen la pantalla hacia los lados */
+html, body {
+  overflow-x: hidden;
+  max-width: 100vw;
+}
+
+/* Rejilla de KPIs adaptable: los 6 cuadros se acomodan solos */
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 15px;
+  width: 100%;
+}
+
+/* Fila de gráficos adaptable: se dividen en 2 columnas o se apilan si no hay espacio */
+.charts-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+  gap: 20px;
+  width: 100%;
+}
+
+/* Obliga a las tarjetas y contenedores a respetar el ancho de la pantalla */
+.card {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.chart-container {
+  position: relative;
+  height: 100%;
+  min-height: 300px;
+  width: 100%;
+}
+
+.chart-container canvas {
+  max-width: 100% !important;
+}
