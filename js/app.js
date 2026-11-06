@@ -988,7 +988,7 @@ function renderInstructions(app) {
 
       <div class="instruction-step" style="border-left-color: #2563eb;">
         <h4>Objetivo del Proyecto</h4>
-        <p>Este sistema controla la implementación del nuevo formato de inventario en las 12 cuentas del área MPS (Servicio de Impresión Gestionado). Cada OSA (Operador de Servicio) completa su archivo individual de inventario. El supervisor (tú) actualiza este control en las reuniones de seguimiento, registra bloqueos y presenta el avance al mandante.</p>
+        <p>Este sistema controla la implementación del nuevo formato de inventario en las 12 cuentas del área MPS. Cada OSA (On Site Administrator) completa su archivo individual de inventario. El supervisor (tú) actualiza este control en las reuniones de seguimiento, registra bloqueos y presenta el avance al mandante.</p>
         <p><strong>Cierre comprometido:</strong> 30-11-2026.</p>
       </div>
 
