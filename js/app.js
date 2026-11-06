@@ -1258,7 +1258,26 @@ async function exportToExcel() {
 function download(blob, filename) { const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = filename; a.click(); URL.revokeObjectURL(a.href); }
 let toastTimer;
 function toast(msg) { const t = document.getElementById('toast'); if (!t) return; t.textContent = msg; t.classList.add('show'); clearTimeout(toastTimer); toastTimer = setTimeout(()=>t.classList.remove('show'), 2400); }
-function takeSnapshot() { const date = state.controlDate; state.accounts.forEach(a => { state.history.push({ date, account: a.name, osas: a.osas, total: a.total, reviewed: a.reviewed, baseCount: a.baseCount, agasCount: a.agasCount, qaCount: a.qaCount, pctBase: pctBase(a), pctAGAS: pctAGAS(a), pctQA: pctQA(a), global: calcGlobal(a), status: calcStatus(a), comment: a.observations||'' }); }); saveState(); toast(`Corte ${date} guardado`); if (currentView === 'history') render(); }
+
+function takeSnapshot() { 
+  const today = new Date();
+  const offset = today.getTimezoneOffset() * 60000;
+  const todayStr = new Date(today.getTime() - offset).toISOString().slice(0, 10);
+  
+  if (state.controlDate > todayStr) {
+    toast('⚠ No puedes guardar cortes con fecha futura. Vuelve a la fecha de hoy.');
+    return;
+  }
+
+  const date = state.controlDate; 
+  state.accounts.forEach(a => { 
+    state.history.push({ date, account: a.name, osas: a.osas, total: a.total, reviewed: a.reviewed, baseCount: a.baseCount, agasCount: a.agasCount, qaCount: a.qaCount, pctBase: pctBase(a), pctAGAS: pctAGAS(a), pctQA: pctQA(a), global: calcGlobal(a), status: calcStatus(a), comment: a.observations||'' }); 
+  }); 
+  saveState(); 
+  toast(`Corte ${date} guardado`); 
+  if (currentView === 'history') render(); 
+}
+
 
 async function init() {
   state = await loadState(); 
