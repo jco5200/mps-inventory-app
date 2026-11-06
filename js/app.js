@@ -229,11 +229,12 @@ function calcPhase(a) {
   if (p > 0) return 'Inventario base A-AF';
   return 'Preparación';
 }
+
 function calcStatus(a) {
   const p = calcGlobal(a);
   if (p >= 1) return 'FINALIZADO';
   if (!a.total || !a.updateDate) return 'SIN DATOS';
-  if (a.criticalBlock) return 'CRÍTICO';
+  if (a.criticalBlock) return 'BLOQUEO'; // CAMBIO AQUÍ
   
   const m = calcMeta(state.controlDate);
   if (p >= m) return 'AL DÍA';
@@ -257,6 +258,7 @@ function calcStatus(a) {
       }
   }
 }
+
 function statusClass(s) {
   const map = { 
     'FINALIZADO': 'badge-finalizado', 
@@ -264,11 +266,13 @@ function statusClass(s) {
     'EN PLAZO': 'badge-verde', 
     'ATRASO MENOR': 'badge-ambar', 
     'ATRASO CRÍTICO': 'badge-rojo', 
-    'CRÍTICO': 'badge-rojo', 
+    'BLOQUEO': 'badge-rojo', // CAMBIO AQUÍ
     'SIN DATOS': 'badge-sin-fecha' 
   };
   return map[s] || '';
 }
+
+
 function fmtPct(v) { if (v==null || isNaN(v)) return '—'; return (v*100).toFixed(1)+'%'; }
 function daysSinceDate(d) { if (!d) return null; return Math.floor((new Date(state.controlDate+'T00:00:00') - new Date(d+'T00:00:00'))/86400000); }
 function calcRiskSemaphore(r) {
@@ -431,14 +435,15 @@ function renderDashboard(app) {
   const totalReviewed = accs.reduce((s,a)=>s+(+a.reviewed||0),0);
   const totalEquip = accs.reduce((s,a)=>s+(+a.total||0),0);
 
-  const counts = { FINALIZADO:0, 'AL DÍA':0, 'EN PLAZO':0, 'ATRASO MENOR':0, 'ATRASO CRÍTICO':0, 'CRÍTICO':0, 'SIN DATOS':0 };
+  // Incluimos BLOQUEO en las cuentas
+  const counts = { FINALIZADO:0, 'AL DÍA':0, 'EN PLAZO':0, 'ATRASO MENOR':0, 'ATRASO CRÍTICO':0, 'BLOQUEO':0, 'SIN DATOS':0 };
   accs.forEach(a => counts[calcStatus(a)]++);
 
-  // Solo consideramos errores QA reales (archivos con fallas)
+  // NUEVO: Contador de bloqueos para la KPI
+  const bloqueosCount = accs.filter(a => a.criticalBlock).length;
+
   const accountsWithQA = accs.filter(a => a.qaDetails && a.qaDetails.length > 0);
   const hasErrors = accountsWithQA.length > 0;
-  
-  // Contamos cuántas cuentas tienen equipos cargados (Total > 0)
   const cuentasCargadas = accs.filter(a => a.total > 0).length;
 
   const week = getCurrentWeek(state.controlDate);
@@ -535,7 +540,9 @@ function renderDashboard(app) {
       <div class="kpi"><div class="kpi-label">Cuentas</div><div class="kpi-value">12</div><div class="kpi-sub">${totalOSAs} OSAs asignados</div></div>
       <div class="kpi success"><div class="kpi-label">Avance promedio</div><div class="kpi-value">${fmtPct(avgProgress)}</div><div class="kpi-sub">Meta ${prep?'—':fmtPct(week.meta)}</div></div>
       <div class="kpi success"><div class="kpi-label">Al día</div><div class="kpi-value">${counts['AL DÍA']+counts.FINALIZADO+counts['EN PLAZO']}</div><div class="kpi-sub">${counts['ATRASO MENOR']} en atraso menor</div></div>
-      <div class="kpi danger"><div class="kpi-label">Atraso crítico</div><div class="kpi-value">${counts['ATRASO CRÍTICO']+counts['CRÍTICO']}</div><div class="kpi-sub">${counts['SIN DATOS']} sin datos</div></div>
+      <div class="kpi danger"><div class="kpi-label">Atraso crítico</div><div class="kpi-value">${counts['ATRASO CRÍTICO']}</div><div class="kpi-sub">${counts['SIN DATOS']} sin datos</div></div>
+      <!-- NUEVA TARJETA: BLOQUEOS -->
+      <div class="kpi" style="border-top: 3px solid #dc2626;"><div class="kpi-label" style="color:#dc2626">Cuentas Bloqueadas</div><div class="kpi-value" style="color:#dc2626">${bloqueosCount}</div><div class="kpi-sub">Requieren gestión</div></div>
       <div class="kpi"><div class="kpi-label">Equipos revisados</div><div class="kpi-value">${totalReviewed}</div><div class="kpi-sub">de ${totalEquip} totales</div></div>
     </div>
 
@@ -549,14 +556,20 @@ function renderDashboard(app) {
     <div class="card">
       <h2>Resumen por cuenta</h2>
                <div class="table-wrap"><table>
-            <thead><tr><th>Cuenta</th><th>OSAs</th><th>Total</th><th>Revisados</th><th>% Col A-AF</th><th>Col AG-AS</th><th>QA</th><th>Global</th><th>Meta</th><th>Brecha</th><th>Fase</th><th>Estado</th></tr></thead>
+            <thead><tr><th>Cuenta</th><th>OSAs</th><th>Total</th><th>Revisados</th><th>% Col A-AF</th><th>Col AG-AS</th><th>QA</th><th>Global</th><th>Meta</th><th>Brecha</th><th>Fase</th><th>Estado</th><th>Observación / Motivo</th></tr></thead>
             <tbody>${accs.map(a=>{
               const g=calcGlobal(a), m=calcMeta(state.controlDate), gap=g-m, st=calcStatus(a);
+              // Si está bloqueado, mostramos el motivo. Si no, mostramos la observación normal.
+              const obs = a.criticalBlock 
+                ? `<span style="color:#dc2626; font-weight:bold; font-size:12px;">${a.blockDetail || 'Sin detalle específico'}</span>` 
+                : (a.observations || '—');
+              
               return `<tr><td><strong>${a.name}</strong></td><td>${a.osas}</td><td>${a.total}</td><td>${a.reviewed}</td>
                 <td>${fmtPct(pctBase(a))}</td><td>${fmtPct(pctAGAS(a))}</td><td>${fmtPct(pctQA(a))}</td>
                 <td><strong>${fmtPct(g)}</strong></td><td>${fmtPct(m)}</td>
                 <td style="color:${gap<0?'var(--danger)':'var(--success)'}">${(gap*100).toFixed(1)} pts</td>
-                <td>${calcPhase(a)}</td><td><span class="badge ${statusClass(st)}">${st}</span></td></tr>`;}).join('')}
+                <td>${calcPhase(a)}</td><td><span class="badge ${statusClass(st)}">${st}</span></td>
+                <td style="font-size:12px; max-width:200px; white-space:normal;">${obs}</td></tr>`;}).join('')}
             </tbody>
           </table></div>
     </div>
@@ -591,7 +604,13 @@ function renderDashboard(app) {
     charts.progress = new Chart(document.getElementById('chartProgress'), {
       type:'bar',
       data:{ labels:accs.map(a=>a.name), datasets:[
-        { label:'Avance', data:accs.map(a=>+(calcGlobal(a)*100).toFixed(1)), backgroundColor:'#2563eb', borderRadius:6 },
+        { 
+          label:'Avance', 
+          data:accs.map(a=>+(calcGlobal(a)*100).toFixed(1)), 
+          // NUEVO: Si la cuenta está bloqueada, la barra es ROJA. Si no, es AZUL.
+          backgroundColor: accs.map(a => a.criticalBlock ? '#dc2626' : '#2563eb'), 
+          borderRadius:6 
+        },
         { label:'Meta', data:accs.map(()=>+(calcMeta(state.controlDate)*100).toFixed(1)), backgroundColor:'#94a3b8', borderRadius:6 },
       ]},
       options:{ responsive:true, maintainAspectRatio:false,
@@ -606,7 +625,7 @@ function renderDashboard(app) {
     charts.status = new Chart(document.getElementById('chartStatus'), {
       type:'doughnut',
       data:{ labels:['Al día / En plazo','Atraso menor','Atraso crítico','Finalizado','Sin datos'], datasets:[{
-        data:[counts['AL DÍA']+counts['EN PLAZO'],counts['ATRASO MENOR'],counts['ATRASO CRÍTICO']+counts['CRÍTICO'],counts.FINALIZADO,counts['SIN DATOS']],
+        data:[counts['AL DÍA']+counts['EN PLAZO'],counts['ATRASO MENOR'],counts['ATRASO CRÍTICO']+counts['BLOQUEO'],counts.FINALIZADO,counts['SIN DATOS']],
         backgroundColor:['#16a34a','#f59e0b','#dc2626','#0d9488','#9ca3af'], borderWidth:0,
       }]},
       options:{ responsive:true, maintainAspectRatio:false,
@@ -740,7 +759,8 @@ function renderPlan(app) {
   const prepDone = state.accounts.filter(a => a.responsible && a.total > 0).length;
   const avg = state.accounts.reduce((s,a)=>s+calcGlobal(a),0)/state.accounts.length;
 
-  const sorted = [...state.accounts].sort((a,b)=>{const p={'ATRASO CRÍTICO':0,'CRÍTICO':0,'ATRASO MENOR':1,'EN PLAZO':2,'AL DÍA':3,'FINALIZADO':4,'SIN DATOS':5}; return (p[calcStatus(a)]??6)-(p[calcStatus(b)]??6);});
+  // CAMBIO: Reemplazamos 'CRÍTICO':0 por 'BLOQUEO':0 para que aparezcan primero
+  const sorted = [...state.accounts].sort((a,b)=>{const p={'BLOQUEO':0,'ATRASO CRÍTICO':1,'ATRASO MENOR':2,'EN PLAZO':3,'AL DÍA':4,'FINALIZADO':5,'SIN DATOS':6}; return (p[calcStatus(a)]??7)-(p[calcStatus(b)]??7);});
    
   app.innerHTML = `
     <div class="card plan-header"><div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:20px;"><div><div class="week-badge">${week.name} · ${week.period}</div><h2 style="font-size:22px;margin-top:10px;">Foco: ${week.focus}</h2><p class="help">${isPrep ? `Prep: ${prepDone}/12 cuentas` : `Meta: ${fmtPct(week.meta)}`}</p></div><div style="text-align:right"><div style="font-size:32px;font-weight:700;color:var(--primary);">${fmtPct(avg)}</div><div class="help">Avance prom.</div></div></div></div>
