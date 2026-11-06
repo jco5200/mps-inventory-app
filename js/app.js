@@ -1070,7 +1070,11 @@ function renderInstructions(app) {
 }
 
 function renderSettings(app) {
-  app.innerHTML = `<div class="card"><h2>Configuración</h2><div class="form-grid" style="margin-bottom:20px"><div><label>Fecha de control</label><input type="date" id="setControlDate" value="${state.controlDate}"></div></div><div style="display:flex;gap:10px;flex-wrap:wrap"><button class="btn btn-primary" id="btnExportJSON">⬇ JSON</button><button class="btn" id="btnImportJSON">⬆ Importar JSON</button><button class="btn" id="btnExportCSV">⬇ CSV</button><button class="btn btn-danger" id="btnReset">🔄 Reiniciar</button></div><input type="file" id="fileImport" accept="application/json" hidden></div>`;
+  const today = new Date();
+  const offset = today.getTimezoneOffset() * 60000;
+  const todayStr = new Date(today.getTime() - offset).toISOString().slice(0, 10);
+
+  app.innerHTML = `<div class="card"><h2>Configuración</h2><div class="form-grid" style="margin-bottom:20px"><div><label>Fecha de control</label><input type="date" id="setControlDate" max="${todayStr}" value="${state.controlDate}"></div></div><div style="display:flex;gap:10px;flex-wrap:wrap"><button class="btn btn-primary" id="btnExportJSON">⬇ JSON</button><button class="btn" id="btnImportJSON">⬆ Importar JSON</button><button class="btn" id="btnExportCSV">⬇ CSV</button><button class="btn btn-danger" id="btnReset">🔄 Reiniciar</button></div><input type="file" id="fileImport" accept="application/json" hidden></div>`;
   document.getElementById('setControlDate').addEventListener('change',e=>{ state.controlDate=e.target.value; saveState(); render(); });
   document.getElementById('btnExportJSON').addEventListener('click',()=>{ download(new Blob([JSON.stringify(state,null,2)],{type:'application/json'}), `mps.json`); });
   document.getElementById('btnImportJSON').addEventListener('click',()=>document.getElementById('fileImport').click());
@@ -1078,6 +1082,7 @@ function renderSettings(app) {
   document.getElementById('btnExportCSV').addEventListener('click',()=>{ const h=['Cuenta','Total','Revisados']; const rows=state.accounts.map(a=>[a.name,a.total,a.reviewed]); const csv=[h,...rows].map(r=>r.join(',')).join('\n'); download(new Blob([csv],{type:'text/csv'}), 'mps.csv'); });
   document.getElementById('btnReset').addEventListener('click',()=>{ if(!confirm('¿Borrar todo?'))return; state=getInitialState(); saveState(); render(); });
 }
+
 
 function generateChartImage(config) { 
   if (typeof Chart === 'undefined') return null; 
