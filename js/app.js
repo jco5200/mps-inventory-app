@@ -1301,6 +1301,9 @@ async function init() {
   
    const cd = document.getElementById('controlDate'); 
   if (cd) { 
+    const today = new Date();
+    const offset = today.getTimezoneOffset() * 60000;
+    cd.max = new Date(today.getTime() - offset).toISOString().slice(0, 10);
     cd.value = state.controlDate; 
     cd.addEventListener('change', e => { state.controlDate = e.target.value; saveState(); render(); }); 
   }
