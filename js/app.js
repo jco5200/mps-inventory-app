@@ -831,12 +831,28 @@ function openReunionModal(accountId) {
     <div class="modal-actions" style="margin-top:20px"><button class="btn" id="rm-cancel">Cerrar</button><button class="btn btn-primary" id="rm-save">Guardar corte</button></div>`;
   modal.style.display = 'grid';
   document.getElementById('rm-cancel').onclick = () => { modal.style.display = 'none'; };
+  
   document.getElementById('rm-save').onclick = () => {
+    const today = new Date();
+    const offset = today.getTimezoneOffset() * 60000;
+    const todayStr = new Date(today.getTime() - offset).toISOString().slice(0, 10);
+    
+    if (state.controlDate > todayStr) {
+      toast('⚠ No puedes guardar cortes con fecha futura. Cambia la fecha superior.');
+      return;
+    }
+
     const t=Math.max(0,parseInt(document.getElementById('rm-total').value)||0), r=Math.max(0,parseInt(document.getElementById('rm-reviewed').value)||0), b=Math.max(0,parseInt(document.getElementById('rm-base').value)||0), ag=Math.max(0,parseInt(document.getElementById('rm-agas').value)||0), q=Math.max(0,parseInt(document.getElementById('rm-qa').value)||0), cb=document.getElementById('rm-block').checked, na=document.getElementById('rm-nextaction').value.trim(), cd=document.getElementById('rm-commitment').value;
+    
     if (r>t || b>r || ag>b || q>ag) { toast('Jerarquía inválida: Total ≥ Revisados ≥ Base ≥ AG-AS ≥ QA'); return; }
     if (cb && (!na || !cd)) { toast('Bloqueo requiere acción y fecha'); return; }
+    
     acc.total=t; acc.reviewed=r; acc.baseCount=b; acc.agasCount=ag; acc.qaCount=q; acc.criticalBlock=cb; acc.blockDetail=document.getElementById('rm-blockdetail').value; acc.nextAction=na; acc.actionResponsible=document.getElementById('rm-actionresp').value; acc.commitmentDate=cd; acc.updateDate=state.controlDate;
-    if (cb && acc.blockDetail && !state.risks.find(rx => rx.account === acc.name && rx.status !== 'Cerrado')) { state.risks.push({ id: nextRiskId(), meetingDate: state.controlDate, account: acc.name, category: 'Plazo', detail: acc.blockDetail, impact: 'Alto', responsible: acc.actionResponsible, commitmentDate: acc.commitmentDate, status: 'Abierto', closure: '' }); }
+    
+    if (cb && acc.blockDetail && !state.risks.find(rx => rx.account === acc.name && rx.status !== 'Cerrado')) { 
+      state.risks.push({ id: nextRiskId(), meetingDate: state.controlDate, account: acc.name, category: 'Plazo', detail: acc.blockDetail, impact: 'Alto', responsible: acc.actionResponsible, commitmentDate: acc.commitmentDate, status: 'Abierto', closure: '' }); 
+    }
+    
     state.history.push({ date: state.controlDate, account: acc.name, osas: acc.osas, total: acc.total, reviewed: acc.reviewed, baseCount: acc.baseCount, agasCount: acc.agasCount, qaCount: acc.qaCount, pctBase: pctBase(acc), pctAGAS: pctAGAS(acc), pctQA: pctQA(acc), global: calcGlobal(acc), status: calcStatus(acc), comment: acc.observations });
     saveState(); modal.style.display = 'none'; render(); toast('Corte guardado');
   };
@@ -1283,7 +1299,7 @@ async function init() {
   state = await loadState(); 
   if (!state.controlDate) state.controlDate = new Date().toISOString().slice(0,10);
   
-  const cd = document.getElementById('controlDate'); 
+   const cd = document.getElementById('controlDate'); 
   if (cd) { 
     cd.value = state.controlDate; 
     cd.addEventListener('change', e => { state.controlDate = e.target.value; saveState(); render(); }); 
