@@ -45,6 +45,7 @@ const DB_VERSION = 1;
 const STORE_CURRENT = 'state';
 const STORE_SNAPSHOTS = 'snapshots';
 let fileHandle = null;
+let dirHandle = null; // NUEVO: Guardamos la referencia de la carpeta
 let autoSaveTimer = null;
 let saveTimer = null;
 let lastSnapTs = 0;
@@ -103,9 +104,9 @@ async function pickBackupFolder() {
   if (!window.showDirectoryPicker) { toast('Usá Chrome, Edge u Opera.'); return; }
   try {
     const dir = await window.showDirectoryPicker({ mode: 'readwrite' });
+    dirHandle = dir; // NUEVO: Guardamos la carpeta elegida
     await dbPut(STORE_CURRENT, 'dirHandle', dir);
     if (dir.requestPermission) { try { await dir.requestPermission({ mode: 'readwrite' }); } catch (e) {} }
-    fileHandle = await dir.getFileHandle('mps_backup.json', { create: true });
     await autoSaveToFile();
     toast('✓ Carpeta configurada: ' + dir.name);
     render();
@@ -116,12 +117,21 @@ async function restoreFileHandle() {
     const dir = await dbGet(STORE_CURRENT, 'dirHandle');
     if (!dir) return;
     const perm = await dir.queryPermission({ mode: 'readwrite' });
-    if (perm === 'granted') fileHandle = await dir.getFileHandle('mps_backup.json', { create: true });
+    if (perm === 'granted') dirHandle = dir; // NUEVO: Restauramos la carpeta
   } catch (e) { console.error(e); }
 }
 async function autoSaveToFile() {
-  if (!fileHandle || !state) return false;
+  if (!dirHandle || !state) return false;
   try {
+    // NUEVO: Generar nombre de archivo con la fecha del día de hoy
+    const today = new Date();
+    const offset = today.getTimezoneOffset() * 60000;
+    const dateStr = new Date(today.getTime() - offset).toISOString().slice(0, 10);
+    const fileName = `mps_backup_${dateStr}.json`;
+
+    // Obtiene o crea el archivo exclusivo para el día de hoy
+    fileHandle = await dirHandle.getFileHandle(fileName, { create: true });
+    
     const w = await fileHandle.createWritable();
     await w.write(JSON.stringify(state, null, 2));
     await w.close();
@@ -167,7 +177,7 @@ async function loadState() {
   return dbState || lsState || getInitialState();
 }
 function getBackupStatus() {
-  if (!fileHandle) return { level: 'warn', msg: '⚠ Sin carpeta de respaldo', long: 'Configurá una carpeta en Respaldos.' };
+  if (!dirHandle) return { level: 'warn', msg: '⚠ Sin carpeta de respaldo', long: 'Configurá una carpeta en Respaldos.' };
   if (!state || !state._lastFileSave) return { level: 'warn', msg: '⚠ Aún sin guardado', long: 'Hacé un cambio o esperá 5 min.' };
   const hours = (Date.now() - new Date(state._lastFileSave).getTime()) / 3600000;
   if (hours > 24) return { level: 'danger', msg: `🔴 Último respaldo hace ${Math.floor(hours/24)} días`, long: 'Exportá manualmente.' };
@@ -185,17 +195,18 @@ function updateBackupStatus() {
 function startAutoSave() {
   if (autoSaveTimer) clearInterval(autoSaveTimer);
   autoSaveTimer = setInterval(async () => {
-    if (fileHandle && state) { await autoSaveToFile(); updateBackupStatus(); }
+    if (dirHandle && state) { await autoSaveToFile(); updateBackupStatus(); }
     await maybeAutoSnapshot();
   }, 5 * 60 * 1000);
 }
 function setupUnloadWarning() {
   window.addEventListener('beforeunload', e => {
-    if (!fileHandle || !state) return;
+    if (!dirHandle || !state) return;
     const hours = (Date.now() - (state._lastFileSave ? new Date(state._lastFileSave).getTime() : 0)) / 3600000;
     if (hours > 1) { e.preventDefault(); e.returnValue = '¿Salir sin respaldar?'; return e.returnValue; }
   });
 }
+
 
 /* ========== ESTADO INICIAL ========== */
 function getInitialState() {
