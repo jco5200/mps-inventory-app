@@ -9,13 +9,22 @@ if (typeof Chart !== 'undefined' && typeof ChartDataLabels !== 'undefined') {
   Chart.register(ChartDataLabels);
 }
 
+/* =============================================================
+   CONFIGURACIÓN INICIAL (MODO PLANTILLA AUTO-CONFIGURABLE)
+   -------------------------------------------------------------
+   Este bloque concentra los valores por defecto de fábrica.
+   El usuario puede sobreescribir fechas y metas desde la
+   interfaz de "Configuración" (state.metaThresholds), sin tocar
+   jamás este archivo. Editar SOLO este bloque permite crear
+   nuevas instancias de la plantilla.
+   ============================================================= */
 const META_THRESHOLDS = [
-  { max: '2026-10-30', meta: 0.10 },
-  { max: '2026-11-06', meta: 0.55 },
-  { max: '2026-11-13', meta: 0.75 },
-  { max: '2026-11-20', meta: 0.90 },
-  { max: '2026-11-27', meta: 0.98 },
-  { max: '9999-12-31', meta: 1.00 },
+  { max: '2026-10-30', meta: 0.10, name: 'Inicio',   focus: 'Preparación y asignación', period: '29-30 oct' },
+  { max: '2026-11-06', meta: 0.55, name: 'Semana 1', focus: 'Levantamiento base A-AF',   period: '02-06 nov' },
+  { max: '2026-11-13', meta: 0.75, name: 'Semana 2', focus: 'Investigación AG-AS',       period: '09-13 nov' },
+  { max: '2026-11-20', meta: 0.90, name: 'Semana 3', focus: 'Cierre AG-AS',              period: '16-20 nov' },
+  { max: '2026-11-27', meta: 0.98, name: 'Semana 4', focus: 'QA y correcciones',         period: '23-27 nov' },
+  { max: '9999-12-31', meta: 1.00, name: 'Cierre',   focus: 'Revisión final y cierre',   period: '30 nov' },
 ];
 
 const GANTT_PHASES = [
@@ -34,6 +43,28 @@ const SCHEDULE = [
   { week:'Semana 4', period:'23-27 nov', phase:'QA y correcciones', osaAction:'Corregir duplicados, vacíos, formatos e inconsistencias detectadas.', supAction:'Ejecutar control de calidad, muestreo y devolución de observaciones.', deliverable:'Inventario corregido y listo para cierre.', meta:0.98, evidence:'Checklist QA; observaciones resueltas; versión corregida.', risk:'Correcciones tardías o reincidencia de errores.', meeting:'27-nov: aprobación QA', responsible:'Supervisor + OSA', status:'Pendiente' },
   { week:'Cierre', period:'30 nov', phase:'Revisión final y Cierre', osaAction:'Entregar versión final y documentar pendientes excepcionales.', supAction:'Consolidar estado, preparar informe y cerrar compromisos.', deliverable:'Inventarios cerrados y estado final presentado.', meta:1.00, evidence:'Versión final; acta de cierre; pendientes excepcionales.', risk:'Pendientes sin aceptación o falta de evidencia final.', meeting:'30-nov: cierre del proyecto', responsible:'Supervisor', status:'Pendiente' },
 ];
+
+const CUENTAS_INICIALES = [
+  ['fasa','FASA',1,'Edgardo Carrasco',418],
+  ['u-central','U CENTRAL',2,'Debora Arriagada',124],
+  ['u-mayor','U MAYOR',3,'Yeremy Ovalle',243],
+  ['uai','UAI',1,'Felipe Higueras',102],
+  ['caja-18','CAJA 18',1,'Sergio Orellana',323],
+  ['lo-barnechea','LO BARNECHEA',1,'Pedro Bustamante',141],
+  ['sura','SURA',1,'Gaspar Giron',240],
+  ['dhl','DHL',1,'Sergio Agurto',81],
+  ['larrain','LARRAIN',1,'Sergio Agurto',68],
+  ['salfa','SALFA',1,'Alejandro Garrido',377],
+  ['metlife','METLIFE SEGUROS',1,'Felipe Higueras',103],
+  ['provida','PROVIDA',1,'Felipe Higueras',0]
+];
+
+function getThresholds() {
+  if (state && Array.isArray(state.metaThresholds) && state.metaThresholds.length > 0) {
+    return state.metaThresholds;
+  }
+  return META_THRESHOLDS;
+}
 
 let state = null;
 let currentView = 'dashboard'; 
@@ -159,12 +190,20 @@ async function loadState() {
   let dbState = null, lsState = null;
   try { const db = await dbGet(STORE_CURRENT, 'current'); if (db && db.accounts) dbState = db; } catch (e) {}
   try { const r = localStorage.getItem(STORAGE_KEY); if (r) { const p = JSON.parse(r); if (p.accounts) lsState = p; } } catch (e) {}
+  
+  let s;
   if (dbState && lsState) {
     const dbTs = dbState._lastSave ? new Date(dbState._lastSave).getTime() : 0;
     const lsTs = lsState._lastSave ? new Date(lsState._lastSave).getTime() : 0;
-    return lsTs > dbTs ? lsState : dbState;
+    s = lsTs > dbTs ? lsState : dbState;
+  } else {
+    s = dbState || lsState || getInitialState();
   }
-  return dbState || lsState || getInitialState();
+  
+  if (s && !Array.isArray(s.metaThresholds)) {
+    s.metaThresholds = JSON.parse(JSON.stringify(META_THRESHOLDS));
+  }
+  return s;
 }
 function getBackupStatus() {
   if (!fileHandle) return { level: 'warn', msg: '⚠ Sin carpeta de respaldo', long: 'Configurá una carpeta en Respaldos.' };
@@ -199,19 +238,18 @@ function setupUnloadWarning() {
 
 /* ========== ESTADO INICIAL ========== */
 function getInitialState() {
-  const accounts = [
-    ['fasa','FASA',1,'Edgardo Carrasco',418], ['u-central','U CENTRAL',2,'Debora Arriagada',124],
-    ['u-mayor','U MAYOR',3,'Yeremy Ovalle',243], ['uai','UAI',1,'Felipe Higueras',102],
-    ['caja-18','CAJA 18',1,'Sergio Orellana',323], ['lo-barnechea','LO BARNECHEA',1,'Pedro Bustamante',141],
-    ['sura','SURA',1,'Gaspar Giron',240], ['dhl','DHL',1,'Sergio Agurto',81],
-    ['larrain','LARRAIN',1,'Sergio Agurto',68], ['salfa','SALFA',1,'Alejandro Garrido',377],
-    ['metlife','METLIFE SEGUROS',1,'Felipe Higueras',103], ['provida','PROVIDA',1,'Felipe Higueras',0]
-  ].map(([id,name,osas,responsible,total]) => ({
+  const accounts = CUENTAS_INICIALES.map(([id,name,osas,responsible,total]) => ({
     id, name, osas, responsible, total, reviewed: 0, baseCount: 0, agasCount: 0, qaCount: 0,
     updateDate: '2026-10-30', criticalBlock: false, blockDetail: '', nextAction: '',
     actionResponsible: '', commitmentDate: '', observations: id === 'provida' ? 'No está en DCC' : 'Preparación completada'
   }));
-  return { accounts, risks: [], history: [], controlDate: new Date().toISOString().slice(0,10) };
+  return {
+    accounts,
+    risks: [],
+    history: [],
+    controlDate: new Date().toISOString().slice(0,10),
+    metaThresholds: JSON.parse(JSON.stringify(META_THRESHOLDS))
+  };
 }
 
 /* ========== CÁLCULOS ========== */
@@ -219,7 +257,7 @@ function pctBase(a) { return a.total > 0 ? Math.min(1, a.baseCount / a.total) : 
 function pctAGAS(a) { return a.total > 0 ? Math.min(1, a.agasCount / a.total) : 0; }
 function pctQA(a)   { return a.total > 0 ? Math.min(1, a.qaCount   / a.total) : 0; }
 function calcGlobal(a) { return pctBase(a)*WEIGHTS.base + pctAGAS(a)*WEIGHTS.agas + pctQA(a)*WEIGHTS.qa; }
-function calcMeta(d) { if (!d) return 0; for (const t of META_THRESHOLDS) if (d <= t.max) return t.meta; return 1; }
+function calcMeta(d) { if (!d) return 0; for (const t of getThresholds()) if (d <= t.max) return t.meta; return 1; }
 function calcGap(a) { return calcGlobal(a) - calcMeta(state.controlDate); }
 function calcPhase(a) {
   const p = calcGlobal(a);
@@ -234,15 +272,16 @@ function calcStatus(a) {
   const p = calcGlobal(a);
   if (p >= 1) return 'FINALIZADO';
   if (!a.total || !a.updateDate) return 'SIN DATOS';
-  if (a.criticalBlock) return 'BLOQUEO'; // CAMBIO AQUÍ
+  if (a.criticalBlock) return 'BLOQUEO';
   
   const m = calcMeta(state.controlDate);
   if (p >= m) return 'AL DÍA';
   
+  const thresholds = getThresholds();
   let currentPhaseEnd = '9999-12-31';
-  for (let i = 0; i < META_THRESHOLDS.length; i++) {
-     if (state.controlDate <= META_THRESHOLDS[i].max) {
-         currentPhaseEnd = META_THRESHOLDS[i].max;
+  for (let i = 0; i < thresholds.length; i++) {
+     if (state.controlDate <= thresholds[i].max) {
+         currentPhaseEnd = thresholds[i].max;
          break;
      }
   }
@@ -266,12 +305,11 @@ function statusClass(s) {
     'EN PLAZO': 'badge-verde', 
     'ATRASO MENOR': 'badge-ambar', 
     'ATRASO CRÍTICO': 'badge-rojo', 
-    'BLOQUEO': 'badge-rojo', // CAMBIO AQUÍ
+    'BLOQUEO': 'badge-rojo', 
     'SIN DATOS': 'badge-sin-fecha' 
   };
   return map[s] || '';
 }
-
 
 function fmtPct(v) { if (v==null || isNaN(v)) return '—'; return (v*100).toFixed(1)+'%'; }
 function daysSinceDate(d) { if (!d) return null; return Math.floor((new Date(state.controlDate+'T00:00:00') - new Date(d+'T00:00:00'))/86400000); }
@@ -288,14 +326,24 @@ function calcRiskDays(r) {
   return Math.ceil((new Date(r.commitmentDate + 'T00:00:00') - new Date(state.controlDate + 'T00:00:00')) / 86400000);
 }
 function getCurrentWeek(d) {
-  if (d <= '2026-10-30') return { name:'Inicio',   focus:'Preparación y asignación', meta:0.10, period:'29-30 oct' };
-  if (d <= '2026-11-06') return { name:'Semana 1', focus:'Levantamiento base A-AF',  meta:0.55, period:'02-06 nov' };
-  if (d <= '2026-11-13') return { name:'Semana 2', focus:'Investigación AG-AS',      meta:0.75, period:'09-13 nov' };
-  if (d <= '2026-11-20') return { name:'Semana 3', focus:'Cierre AG-AS',             meta:0.90, period:'16-20 nov' };
-  if (d <= '2026-11-27') return { name:'Semana 4', focus:'QA y correcciones',        meta:0.98, period:'23-27 nov' };
-  return                       { name:'Cierre',   focus:'Revisión final y cierre',   meta:1.00, period:'30 nov' };
+  const thresholds = getThresholds();
+  for (const t of thresholds) {
+    if (d <= t.max) {
+      return {
+        name: t.name || 'Hito',
+        focus: t.focus || '—',
+        meta: t.meta,
+        period: t.period || t.max.slice(5)
+      };
+    }
+  }
+  return { name:'Cierre', focus:'Revisión final y cierre', meta:1.00, period:'30 nov' };
 }
-function isPreparationPhase(d) { return d <= '2026-10-30'; }
+function isPreparationPhase(d) {
+  const thresholds = getThresholds();
+  const first = thresholds[0];
+  return first ? d <= first.max : d <= '2026-10-30';
+}
 function validateAll() {
   const w = [];
   state.accounts.forEach(a => {
@@ -435,11 +483,9 @@ function renderDashboard(app) {
   const totalReviewed = accs.reduce((s,a)=>s+(+a.reviewed||0),0);
   const totalEquip = accs.reduce((s,a)=>s+(+a.total||0),0);
 
-  // Incluimos BLOQUEO en las cuentas
   const counts = { FINALIZADO:0, 'AL DÍA':0, 'EN PLAZO':0, 'ATRASO MENOR':0, 'ATRASO CRÍTICO':0, 'BLOQUEO':0, 'SIN DATOS':0 };
   accs.forEach(a => counts[calcStatus(a)]++);
 
-  // NUEVO: Contador de bloqueos para la KPI
   const bloqueosCount = accs.filter(a => a.criticalBlock).length;
 
   const accountsWithQA = accs.filter(a => a.qaDetails && a.qaDetails.length > 0);
@@ -489,7 +535,6 @@ function renderDashboard(app) {
       </div>
     </div>` : ''}
 
-    <!-- CENTRO DE ALERTAS UNIFICADO -->
     <div class="card" style="padding: 0; overflow: hidden; margin-bottom: 20px; border: 1px solid #e2e8f0; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
       <div style="padding: 12px 20px; background: #f8fafc; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center;">
         <h2 style="margin: 0; font-size: 15px; color: #1e293b; display: flex; align-items: center; gap: 8px;">
@@ -541,7 +586,6 @@ function renderDashboard(app) {
       <div class="kpi success"><div class="kpi-label">Avance promedio</div><div class="kpi-value">${fmtPct(avgProgress)}</div><div class="kpi-sub">Meta ${prep?'—':fmtPct(week.meta)}</div></div>
       <div class="kpi success"><div class="kpi-label">Al día</div><div class="kpi-value">${counts['AL DÍA']+counts.FINALIZADO+counts['EN PLAZO']}</div><div class="kpi-sub">${counts['ATRASO MENOR']} en atraso menor</div></div>
       <div class="kpi danger"><div class="kpi-label">Atraso crítico</div><div class="kpi-value">${counts['ATRASO CRÍTICO']}</div><div class="kpi-sub">${counts['SIN DATOS']} sin datos</div></div>
-      <!-- NUEVA TARJETA: BLOQUEOS -->
       <div class="kpi" style="border-top: 3px solid #dc2626;"><div class="kpi-label" style="color:#dc2626">Cuentas Bloqueadas</div><div class="kpi-value" style="color:#dc2626">${bloqueosCount}</div><div class="kpi-sub">Requieren gestión</div></div>
       <div class="kpi"><div class="kpi-label">Equipos revisados</div><div class="kpi-value">${totalReviewed}</div><div class="kpi-sub">de ${totalEquip} totales</div></div>
     </div>
@@ -559,7 +603,6 @@ function renderDashboard(app) {
             <thead><tr><th>Cuenta</th><th>OSAs</th><th>Total</th><th>Revisados</th><th>% Col A-AF</th><th>Col AG-AS</th><th>QA</th><th>Global</th><th>Meta</th><th>Brecha</th><th>Fase</th><th>Estado</th><th>Observación / Motivo</th></tr></thead>
             <tbody>${accs.map(a=>{
               const g=calcGlobal(a), m=calcMeta(state.controlDate), gap=g-m, st=calcStatus(a);
-              // Si está bloqueado, mostramos el motivo. Si no, mostramos la observación normal.
               const obs = a.criticalBlock 
                 ? `<span style="color:#dc2626; font-weight:bold; font-size:12px;">${a.blockDetail || 'Sin detalle específico'}</span>` 
                 : (a.observations || '—');
@@ -609,14 +652,12 @@ function renderDashboard(app) {
         { 
           label:'Avance', 
           data:accs.map(a=>+(calcGlobal(a)*100).toFixed(1)), 
-          // La barra de avance se queda Azul siempre para ver el progreso real
           backgroundColor: '#2563eb', 
           borderRadius:6 
         },
         { 
           label:'Meta', 
           data:accs.map(()=>+(calcMeta(state.controlDate)*100).toFixed(1)), 
-          // La barra de Meta (gris) se pinta de ROJO si la cuenta tiene bloqueo
           backgroundColor: accs.map(a => a.criticalBlock ? '#dc2626' : '#94a3b8'), 
           borderRadius:6 
         },
@@ -774,7 +815,6 @@ function renderPlan(app) {
   const prepDone = state.accounts.filter(a => a.responsible && a.total > 0).length;
   const avg = state.accounts.reduce((s,a)=>s+calcGlobal(a),0)/state.accounts.length;
 
-  // CAMBIO: Reemplazamos 'CRÍTICO':0 por 'BLOQUEO':0 para que aparezcan primero
   const sorted = [...state.accounts].sort((a,b)=>{const p={'BLOQUEO':0,'ATRASO CRÍTICO':1,'ATRASO MENOR':2,'EN PLAZO':3,'AL DÍA':4,'FINALIZADO':5,'SIN DATOS':6}; return (p[calcStatus(a)]??7)-(p[calcStatus(b)]??7);});
    
   app.innerHTML = `
@@ -787,7 +827,6 @@ function renderPlan(app) {
 
 function renderAccounts(app) {
   const warnings = validateAll();
-  const lastSnap = getLastSnapshotByAccount();
   
   app.innerHTML = `<div class="card">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px"><div><h2>Inventario por Cuenta</h2><p class="help">Los % se calculan solos.</p></div><button class="btn btn-primary" id="btnImportOSA">📂 Importar Excel OSA</button></div>
@@ -1104,8 +1143,6 @@ function renderInstructions(app) {
   `;
 }
 
-
-/* INICIO — renderSettings (Paso 4: Panel de Configuración de Fechas) */
 function renderSettings(app) {
   const today = new Date();
   const offset = today.getTimezoneOffset() * 60000;
@@ -1245,8 +1282,6 @@ function renderSettings(app) {
     toast('✓ Valores por defecto restaurados');
   });
 }
-/* FIN — renderSettings (Paso 4: Panel de Configuración de Fechas) */
-
 
 function generateChartImage(config) { 
   if (typeof Chart === 'undefined') return null; 
