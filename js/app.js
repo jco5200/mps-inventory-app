@@ -70,6 +70,16 @@ let state = null;
 let currentView = 'dashboard'; 
 let charts = {};
 
+// Variables para los filtros y orden de la tabla (NO se guardan en el JSON)
+let viewFilters = {
+  searchText: '',
+  status: '',
+  onlyBlocked: false,
+  onlyQA: false,
+  sortBy: '',
+  sortDir: 'asc'
+};
+
 /* ========== RESPALDO ========== */
 const DB_NAME = 'mps_inv_db';
 const DB_VERSION = 1;
@@ -828,13 +838,100 @@ function renderPlan(app) {
 function renderAccounts(app) {
   const warnings = validateAll();
   
+  // 1. Aplicar Filtros
+  let filtered = state.accounts.filter(a => {
+    const st = calcStatus(a);
+    const hasQA = a.qaDetails && a.qaDetails.length > 0;
+    
+    if (viewFilters.searchText) {
+      const txt = viewFilters.searchText.toLowerCase();
+      if (!a.name.toLowerCase().includes(txt) && !a.responsible.toLowerCase().includes(txt)) return false;
+    }
+    if (viewFilters.status && st !== viewFilters.status) return false;
+    if (viewFilters.onlyBlocked && !a.criticalBlock) return false;
+    if (viewFilters.onlyQA && !hasQA) return false;
+    
+    return true;
+  });
+
+  // 2. Aplicar Ordenamiento
+  if (viewFilters.sortBy) {
+    filtered.sort((a, b) => {
+      let valA, valB;
+      const dir = viewFilters.sortDir === 'asc' ? 1 : -1;
+      
+      if (viewFilters.sortBy === 'global') { valA = calcGlobal(a); valB = calcGlobal(b); }
+      else if (viewFilters.sortBy === 'status') { valA = calcStatus(a); valB = calcStatus(b); }
+      else { valA = a[viewFilters.sortBy]; valB = b[viewFilters.sortBy]; }
+
+      if (typeof valA === 'string') {
+        return valA.localeCompare(valB) * dir;
+      } else {
+        return (valA - valB) * dir;
+      }
+    });
+  }
+
+  const sortIcon = (field) => {
+    if (viewFilters.sortBy !== field) return ' ↕';
+    return viewFilters.sortDir === 'asc' ? ' ▲' : ' ▼';
+  };
+
+  // 3. Renderizar la vista
   app.innerHTML = `<div class="card">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px"><div><h2>Inventario por Cuenta</h2><p class="help">Los % se calculan solos.</p></div><button class="btn btn-primary" id="btnImportOSA">📂 Importar Excel OSA</button></div>
-    <div class="table-wrap"><table><thead><tr><th>Cuenta</th><th>OSAs</th><th>Responsable</th><th>Total</th><th>Revisados</th><th>% Base Col A-AF</th><th>AG-AS</th><th>QA</th><th>Global</th><th>Estado</th><th>Bloqueo</th><th>Acción</th></tr></thead><tbody id="accountsBody"></tbody></table></div>
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:16px;margin-bottom:16px">
+      <div>
+        <h2>Inventario por Cuenta</h2>
+        <p class="help">Los % se calculan solos. Usa los filtros para personalizar la vista.</p>
+      </div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        <button class="btn btn-primary" id="btnNewAccount">➕ Nueva Cuenta</button>
+        <button class="btn btn-primary" id="btnImportOSA" style="background:#1e293b;border-color:#1e293b;">📂 Importar Excel OSA</button>
+      </div>
+    </div>
+
+    <div style="background:#f8fafc;padding:12px;border-radius:8px;border:1px solid #e2e8f0;margin-bottom:16px;display:flex;gap:12px;flex-wrap:wrap;align-items:center">
+      <input type="text" id="filterSearch" placeholder="🔍 Buscar por cuenta o responsable..." value="${viewFilters.searchText}" style="flex:1;min-width:200px;padding:8px 12px;border-radius:6px;border:1px solid #cbd5e1">
+      
+      <select id="filterStatus" style="padding:8px 12px;border-radius:6px;border:1px solid #cbd5e1;background:white">
+        <option value="">Todos los estados</option>
+        <option value="AL DÍA" ${viewFilters.status === 'AL DÍA' ? 'selected' : ''}>AL DÍA</option>
+        <option value="EN PLAZO" ${viewFilters.status === 'EN PLAZO' ? 'selected' : ''}>EN PLAZO</option>
+        <option value="ATRASO MENOR" ${viewFilters.status === 'ATRASO MENOR' ? 'selected' : ''}>ATRASO MENOR</option>
+        <option value="ATRASO CRÍTICO" ${viewFilters.status === 'ATRASO CRÍTICO' ? 'selected' : ''}>ATRASO CRÍTICO</option>
+        <option value="BLOQUEO" ${viewFilters.status === 'BLOQUEO' ? 'selected' : ''}>BLOQUEO</option>
+        <option value="FINALIZADO" ${viewFilters.status === 'FINALIZADO' ? 'selected' : ''}>FINALIZADO</option>
+        <option value="SIN DATOS" ${viewFilters.status === 'SIN DATOS' ? 'selected' : ''}>SIN DATOS</option>
+      </select>
+
+      <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer">
+        <input type="checkbox" id="filterBlocked" ${viewFilters.onlyBlocked ? 'checked' : ''}> Solo bloqueadas
+      </label>
+      <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer">
+        <input type="checkbox" id="filterQA" ${viewFilters.onlyQA ? 'checked' : ''}> Solo con errores QA
+      </label>
+      
+      <button class="btn btn-sm" id="btnClearFilters" style="margin-left:auto">Limpiar filtros</button>
+    </div>
+
+    <div class="table-wrap"><table><thead><tr>
+      <th style="cursor:pointer" data-sort="name">Cuenta${sortIcon('name')}</th>
+      <th style="cursor:pointer" data-sort="osas">OSAs${sortIcon('osas')}</th>
+      <th style="cursor:pointer" data-sort="responsible">Responsable${sortIcon('responsible')}</th>
+      <th style="cursor:pointer" data-sort="total">Total${sortIcon('total')}</th>
+      <th style="cursor:pointer" data-sort="reviewed">Revisados${sortIcon('reviewed')}</th>
+      <th style="cursor:pointer" data-sort="baseCount">% Base${sortIcon('baseCount')}</th>
+      <th style="cursor:pointer" data-sort="agasCount">AG-AS${sortIcon('agasCount')}</th>
+      <th style="cursor:pointer" data-sort="qaCount">QA${sortIcon('qaCount')}</th>
+      <th style="cursor:pointer" data-sort="global">Global${sortIcon('global')}</th>
+      <th style="cursor:pointer" data-sort="status">Estado${sortIcon('status')}</th>
+      <th>Bloqueo</th><th>Acción</th>
+    </tr></thead><tbody id="accountsBody"></tbody></table></div>
+    ${filtered.length === 0 ? '<div class="empty" style="margin-top:20px">No hay cuentas que coincidan con los filtros.</div>' : ''}
   </div>`;
   
   const tbody = document.getElementById('accountsBody');
-  tbody.innerHTML = state.accounts.map(a => {
+  tbody.innerHTML = filtered.map(a => {
     const g=calcGlobal(a), st=calcStatus(a);
     const w = warnings.filter(x=>x.accountId===a.id);
     const hasQA = a.qaDetails && a.qaDetails.length > 0;
@@ -845,10 +942,14 @@ function renderAccounts(app) {
       <td><input type="number" min="0" value="${a.baseCount}" data-field="baseCount"></td><td><input type="number" min="0" value="${a.agasCount}" data-field="agasCount"></td><td><input type="number" min="0" value="${a.qaCount}" data-field="qaCount"></td>
       <td><strong>${fmtPct(g)}</strong></td><td><span class="badge ${statusClass(st)}">${st}</span></td>
       <td><input type="checkbox" ${a.criticalBlock?'checked':''} data-field="criticalBlock"></td>
-      <td><button class="btn btn-sm btn-danger" data-reset="${a.id}" title="Borrar carga de esta cuenta">🗑️</button></td>
+      <td>
+        <button class="btn btn-sm" data-reset="${a.id}" title="Borrar solo datos (mantiene la cuenta)">🧹</button>
+        <button class="btn btn-sm btn-danger" data-delacc="${a.id}" title="Eliminar la cuenta por completo">✖</button>
+      </td>
     </tr>`;
   }).join('');
   
+  // Eventos de los inputs (igual que antes)
   tbody.querySelectorAll('input').forEach(inp => {
     inp.addEventListener('change', e => {
       const tr = e.target.closest('tr'), acc = state.accounts.find(a=>a.id===tr.dataset.id), f = e.target.dataset.field;
@@ -867,6 +968,7 @@ function renderAccounts(app) {
     });
   });
 
+  // Eventos QA
   tbody.querySelectorAll('[data-qa]').forEach(btn => {
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -876,23 +978,74 @@ function renderAccounts(app) {
     });
   });
 
+  // Botón Limpiar solo datos (Manguera)
   tbody.querySelectorAll('[data-reset]').forEach(btn => {
     btn.addEventListener('click', (e) => {
       const accId = e.target.dataset.reset;
       const acc = state.accounts.find(a => a.id === accId);
-      if (!confirm(`¿Borrar todos los datos cargados de la cuenta ${acc.name}?`)) return;
+      if (!confirm(`¿Borrar todos los datos cargados de la cuenta ${acc.name}? (La cuenta se mantendrá en la lista)`)) return;
       acc.total = 0; acc.reviewed = 0; acc.baseCount = 0; acc.agasCount = 0; acc.qaCount = 0;
-      acc.updateDate = '';
+      acc.updateDate = ''; acc.qaDetails = [];
       saveState(); render();
-      toast(`Datos de ${acc.name} eliminados`);
+      toast(`Datos de ${acc.name} limpiados`);
     });
   });
 
+  // Botón Eliminar Cuenta (Cruz)
+  tbody.querySelectorAll('[data-delacc]').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      const accId = e.target.dataset.delacc;
+      const acc = state.accounts.find(a => a.id === accId);
+      if (!confirm(`¿ELIMINAR la cuenta ${acc.name} de la lista permanentemente?\n\nEsta acción borra la cuenta y su historial.`)) return;
+      state.accounts = state.accounts.filter(a => a.id !== accId);
+      saveState(); render();
+      toast(`Cuenta ${acc.name} eliminada`);
+    });
+  });
+
+  // Nuevo botón + Nueva Cuenta
+  document.getElementById('btnNewAccount').addEventListener('click', () => {
+    const name = prompt('Ingresa el nombre de la nueva cuenta:');
+    if (!name || name.trim() === '') return;
+    const newId = 'acc_' + Date.now();
+    state.accounts.push({
+      id: newId, name: name.trim().toUpperCase(), osas: 1, responsible: 'Por asignar', total: 0, reviewed: 0, baseCount: 0, agasCount: 0, qaCount: 0,
+      updateDate: state.controlDate, criticalBlock: false, blockDetail: '', nextAction: '', actionResponsible: '', commitmentDate: '', observations: 'Cuenta creada manualmente'
+    });
+    saveState(); render();
+    toast(`✓ Cuenta ${name} agregada`);
+  });
+
+  // Importar Excel
   document.getElementById('btnImportOSA').addEventListener('click', () => {
     if (typeof ExcelJS === 'undefined') { toast('ExcelJS no cargó'); return; }
     const input = document.createElement('input'); input.type = 'file'; input.accept = '.xlsx,.xls';
     input.onchange = e => { const f = e.target.files[0]; if (f) setTimeout(() => openImportModal(f), 100); };
     input.click();
+  });
+
+  // 3. Lógica de los Filtros y Orden
+  document.getElementById('filterSearch').addEventListener('input', e => { viewFilters.searchText = e.target.value; render(); });
+  document.getElementById('filterStatus').addEventListener('change', e => { viewFilters.status = e.target.value; render(); });
+  document.getElementById('filterBlocked').addEventListener('change', e => { viewFilters.onlyBlocked = e.target.checked; render(); });
+  document.getElementById('filterQA').addEventListener('change', e => { viewFilters.onlyQA = e.target.checked; render(); });
+  
+  document.getElementById('btnClearFilters').addEventListener('click', () => {
+    viewFilters = { searchText: '', status: '', onlyBlocked: false, onlyQA: false, sortBy: '', sortDir: 'asc' };
+    render();
+  });
+
+  document.querySelectorAll('th[data-sort]').forEach(th => {
+    th.addEventListener('click', () => {
+      const field = th.dataset.sort;
+      if (viewFilters.sortBy === field) {
+        viewFilters.sortDir = viewFilters.sortDir === 'asc' ? 'desc' : 'asc';
+      } else {
+        viewFilters.sortBy = field;
+        viewFilters.sortDir = 'asc';
+      }
+      render();
+    });
   });
 }
 
