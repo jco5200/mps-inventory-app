@@ -1104,19 +1104,148 @@ function renderInstructions(app) {
   `;
 }
 
+
+/* INICIO — renderSettings (Paso 4: Panel de Configuración de Fechas) */
 function renderSettings(app) {
   const today = new Date();
   const offset = today.getTimezoneOffset() * 60000;
   const todayStr = new Date(today.getTime() - offset).toISOString().slice(0, 10);
+  const thresholds = getThresholds();
 
-  app.innerHTML = `<div class="card"><h2>Configuración</h2><div class="form-grid" style="margin-bottom:20px"><div><label>Fecha de control</label><input type="date" id="setControlDate" max="${todayStr}" value="${state.controlDate}"></div></div><div style="display:flex;gap:10px;flex-wrap:wrap"><button class="btn btn-primary" id="btnExportJSON">⬇ JSON</button><button class="btn" id="btnImportJSON">⬆ Importar JSON</button><button class="btn" id="btnExportCSV">⬇ CSV</button><button class="btn btn-danger" id="btnReset">🔄 Reiniciar</button></div><input type="file" id="fileImport" accept="application/json" hidden></div>`;
-  document.getElementById('setControlDate').addEventListener('change',e=>{ state.controlDate=e.target.value; saveState(); render(); });
-  document.getElementById('btnExportJSON').addEventListener('click',()=>{ download(new Blob([JSON.stringify(state,null,2)],{type:'application/json'}), `mps.json`); });
-  document.getElementById('btnImportJSON').addEventListener('click',()=>document.getElementById('fileImport').click());
-  document.getElementById('fileImport').addEventListener('change',e=>{ const f=e.target.files[0]; if(!f)return; const r=new FileReader(); r.onload=ev=>{ try{const d=JSON.parse(ev.target.result); if(!d.accounts)throw new Error(); state=d; saveState(); render();}catch(err){alert('Error');} }; r.readAsText(f); });
-  document.getElementById('btnExportCSV').addEventListener('click',()=>{ const h=['Cuenta','Total','Revisados']; const rows=state.accounts.map(a=>[a.name,a.total,a.reviewed]); const csv=[h,...rows].map(r=>r.join(',')).join('\n'); download(new Blob([csv],{type:'text/csv'}), 'mps.csv'); });
-  document.getElementById('btnReset').addEventListener('click',()=>{ if(!confirm('¿Borrar todo?'))return; state=getInitialState(); saveState(); render(); });
+  const tableRows = thresholds.map((t, i) => {
+    const isLast = t.max === '9999-12-31';
+    const maxDate = isLast ? '' : t.max;
+    return `<tr data-idx="${i}">
+      <td><strong>${i + 1}</strong></td>
+      <td><input type="text" data-tfield="name" value="${t.name || ''}" placeholder="Nombre del hito"></td>
+      <td><input type="text" data-tfield="focus" value="${t.focus || ''}" placeholder="Foco o fase"></td>
+      <td>${isLast
+        ? '<span class="help">Sin fecha (fallback)</span>'
+        : `<input type="date" data-tfield="max" value="${maxDate}">`}</td>
+      <td><input type="number" data-tfield="meta" value="${Math.round(t.meta * 100)}" min="0" max="100" step="1"> %</td>
+      <td><input type="text" data-tfield="period" value="${t.period || ''}" placeholder="ej. 02-06 nov"></td>
+    </tr>`;
+  }).join('');
+
+  app.innerHTML = `
+    <div class="card">
+      <h2>Configuración</h2>
+      <div class="form-grid" style="margin-bottom:20px">
+        <div><label>Fecha de control</label><input type="date" id="setControlDate" max="${todayStr}" value="${state.controlDate}"></div>
+      </div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        <button class="btn btn-primary" id="btnExportJSON">⬇ JSON</button>
+        <button class="btn" id="btnImportJSON">⬆ Importar JSON</button>
+        <button class="btn" id="btnExportCSV">⬇ CSV</button>
+        <button class="btn btn-danger" id="btnReset">🔄 Reiniciar</button>
+      </div>
+      <input type="file" id="fileImport" accept="application/json" hidden>
+    </div>
+
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px">
+        <div>
+          <h2 style="margin:0">Fechas y metas del proyecto</h2>
+          <p class="help" style="margin:4px 0 0 0">Configura los hitos, sus fechas límite y el % de avance esperado. Los cambios se aplican al instante en todo el sistema. No necesitas tocar código.</p>
+        </div>
+        <button class="btn" id="btnResetThresholds">↺ Restaurar valores de fábrica</button>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Nombre del hito</th>
+              <th>Foco / fase</th>
+              <th>Fecha límite</th>
+              <th>Meta (%)</th>
+              <th>Periodo (texto)</th>
+            </tr>
+          </thead>
+          <tbody id="thresholdsBody">${tableRows}</tbody>
+        </table>
+      </div>
+      <p class="help" style="margin-top:12px">💡 El último hito (Cierre) siempre apunta a "sin fecha límite" como fallback. Solo puedes editar su nombre, foco, meta y periodo. Las fechas deben ser estrictamente ascendentes.</p>
+    </div>
+  `;
+
+  document.getElementById('setControlDate').addEventListener('change', e => { state.controlDate = e.target.value; saveState(); render(); });
+
+  document.getElementById('btnExportJSON').addEventListener('click', () => {
+    download(new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' }), 'mps.json');
+  });
+
+  document.getElementById('btnImportJSON').addEventListener('click', () => document.getElementById('fileImport').click());
+
+  document.getElementById('fileImport').addEventListener('change', e => {
+    const f = e.target.files[0]; if (!f) return;
+    const r = new FileReader();
+    r.onload = ev => {
+      try {
+        const d = JSON.parse(ev.target.result);
+        if (!d.accounts) throw new Error('JSON inválido');
+        state = d;
+        if (!Array.isArray(state.metaThresholds)) state.metaThresholds = JSON.parse(JSON.stringify(META_THRESHOLDS));
+        saveState(); render();
+        toast('✓ Estado importado');
+      } catch (err) { alert('Error al importar JSON: ' + err.message); }
+    };
+    r.readAsText(f);
+  });
+
+  document.getElementById('btnExportCSV').addEventListener('click', () => {
+    const h = ['Cuenta', 'Total', 'Revisados'];
+    const rows = state.accounts.map(a => [a.name, a.total, a.reviewed]);
+    const csv = [h, ...rows].map(r => r.join(',')).join('\n');
+    download(new Blob([csv], { type: 'text/csv' }), 'mps.csv');
+  });
+
+  document.getElementById('btnReset').addEventListener('click', () => {
+    if (!confirm('¿Borrar todo y volver al estado inicial? Esta acción no se puede deshacer.')) return;
+    state = getInitialState();
+    saveState(); render();
+    toast('✓ Sistema reiniciado');
+  });
+
+  const tbody = document.getElementById('thresholdsBody');
+  tbody.querySelectorAll('input').forEach(inp => {
+    inp.addEventListener('change', e => {
+      const tr = e.target.closest('tr');
+      const idx = parseInt(tr.dataset.idx, 10);
+      const field = e.target.dataset.tfield;
+      const th = state.metaThresholds[idx];
+      if (!th) return;
+      let v = e.target.value;
+
+      if (field === 'meta') {
+        v = Math.max(0, Math.min(100, Math.round(Number(v) || 0))) / 100;
+        e.target.value = Math.round(v * 100);
+      } else if (field === 'max') {
+        if (!v) { toast('La fecha límite no puede estar vacía'); render(); return; }
+        const prev = state.metaThresholds[idx - 1];
+        const next = state.metaThresholds[idx + 1];
+        if (prev && prev.max !== '9999-12-31' && v <= prev.max) {
+          toast('La fecha debe ser posterior al hito anterior'); render(); return;
+        }
+        if (next && next.max !== '9999-12-31' && v >= next.max) {
+          toast('La fecha debe ser anterior al siguiente hito'); render(); return;
+        }
+      }
+
+      th[field] = v;
+      saveState(); render();
+      toast('✓ Configuración actualizada');
+    });
+  });
+
+  document.getElementById('btnResetThresholds').addEventListener('click', () => {
+    if (!confirm('¿Restaurar las fechas y metas de fábrica? Se perderán tus cambios actuales.')) return;
+    state.metaThresholds = JSON.parse(JSON.stringify(META_THRESHOLDS));
+    saveState(); render();
+    toast('✓ Valores por defecto restaurados');
+  });
 }
+/* FIN — renderSettings (Paso 4: Panel de Configuración de Fechas) */
 
 
 function generateChartImage(config) { 
