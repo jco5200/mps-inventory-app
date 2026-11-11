@@ -278,35 +278,49 @@ function calcPhase(a) {
   return 'Preparación';
 }
 
+/* INICIO — calcStatus (Paso 5: Corrección Semáforo) */
 function calcStatus(a) {
   const p = calcGlobal(a);
+  
+  // Validaciones intactas (Finalizados, Sin Datos, Bloqueos)
   if (p >= 1) return 'FINALIZADO';
   if (!a.total || !a.updateDate) return 'SIN DATOS';
   if (a.criticalBlock) return 'BLOQUEO';
-  
-  const m = calcMeta(state.controlDate);
-  if (p >= m) return 'AL DÍA';
-  
+
   const thresholds = getThresholds();
-  let currentPhaseEnd = '9999-12-31';
-  for (let i = 0; i < thresholds.length; i++) {
-     if (state.controlDate <= thresholds[i].max) {
-         currentPhaseEnd = thresholds[i].max;
-         break;
-     }
-  }
+  const controlDate = state.controlDate || new Date().toISOString().slice(0,10);
   
-  if (state.controlDate > currentPhaseEnd) {
-      if (p >= m - 0.10) return 'ATRASO MENOR';
-      return 'ATRASO CRÍTICO';
+  // 1. Identificar índice del hito actual
+  let currIdx = -1;
+  for (let i = 0; i < thresholds.length; i++) {
+    if (controlDate <= thresholds[i].max) {
+      currIdx = i;
+      break;
+    }
+  }
+  if (currIdx === -1) currIdx = thresholds.length - 1;
+
+  // 2. Obtener Metas
+  const MAct = thresholds[currIdx].meta; // Meta de la semana actual
+  const MA = currIdx > 0 ? thresholds[currIdx - 1].meta : 0; // Meta de la semana pasada
+
+  // 3. Evaluación
+  if (p >= MAct) {
+    return 'AL DÍA'; // Cumplió la meta actual o la superó
+  } else if (p >= MA) {
+    return 'EN PLAZO'; // Cumplió la de la semana pasada, pero aún no llega a la actual
   } else {
-      if (p >= m * 0.5) {
-          return 'EN PLAZO'; 
-      } else {
-          return 'ATRASO MENOR'; 
-      }
+    // p < MA (No cumplió lo de la semana pasada)
+    const gap = MA - p;
+    if (gap > 0.10) {
+      return 'ATRASO CRÍTICO'; // Está a más de 10 puntos por debajo de la meta pasada
+    } else {
+      return 'ATRASO MENOR'; // Está a menos de 10 puntos por debajo
+    }
   }
 }
+/* FIN — calcStatus (Paso 5: Corrección Semáforo) */
+
 
 function statusClass(s) {
   const map = { 
