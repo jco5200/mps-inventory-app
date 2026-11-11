@@ -248,17 +248,12 @@ function setupUnloadWarning() {
 
 /* ========== ESTADO INICIAL ========== */
 function getInitialState() {
-  const accounts = CUENTAS_INICIALES.map(([id,name,osas,responsible,total]) => ({
-    id, name, osas, responsible, total, reviewed: 0, baseCount: 0, agasCount: 0, qaCount: 0,
-    updateDate: '2026-10-30', criticalBlock: false, blockDetail: '', nextAction: '',
-    actionResponsible: '', commitmentDate: '', observations: id === 'provida' ? 'No está en DCC' : 'Preparación completada'
-  }));
   return {
-    accounts,
+    accounts: [], 
     risks: [],
     history: [],
     controlDate: new Date().toISOString().slice(0,10),
-    metaThresholds: JSON.parse(JSON.stringify(META_THRESHOLDS))
+    metaThresholds: JSON.parse(JSON.stringify(META_THRESHOLDS)) 
   };
 }
 
